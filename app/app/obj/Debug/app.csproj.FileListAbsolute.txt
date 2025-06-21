@@ -1,0 +1,10 @@
+C:\Users\gafar\source\repos\app\app\obj\Debug\app.csproj.AssemblyReference.cache
+C:\Users\gafar\source\repos\app\app\obj\Debug\app.Properties.Resources.resources
+C:\Users\gafar\source\repos\app\app\obj\Debug\app.csproj.GenerateResource.cache
+C:\Users\gafar\source\repos\app\app\obj\Debug\app.csproj.CoreCompileInputs.cache
+C:\Users\gafar\source\repos\app\app\bin\Debug\app.exe.config
+C:\Users\gafar\source\repos\app\app\bin\Debug\app.exe
+C:\Users\gafar\source\repos\app\app\bin\Debug\app.pdb
+C:\Users\gafar\source\repos\app\app\obj\Debug\app.exe
+C:\Users\gafar\source\repos\app\app\obj\Debug\app.pdb
+C:\Users\gafar\source\repos\app\app\obj\Debug\FileCompressorApp.Form1.resources
