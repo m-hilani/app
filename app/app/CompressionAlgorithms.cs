@@ -21,6 +21,7 @@ namespace FileCompressorApp
                              Action<int> progressCallback = null, CancellationToken cancellationToken = default);
         Task<string> ExtractSingleFileAsync(string archivePath, string fileToExtract, string outputPath, string password = null,
                                           Action<int> progressCallback = null, CancellationToken cancellationToken = default);
+        Task<List<string>> ListFilesInArchiveAsync(string archivePath, string password = null);
     }
 
     public class HuffmanCompressor : ICompressionAlgorithm
@@ -73,31 +74,41 @@ namespace FileCompressorApp
                             writer.Write(pair.Value);
                         }
 
-                        byte buffer = 0;
-                        int bufferLength = 0;
-
-                        foreach (byte b in data)
+                        // First, compress the data to a memory stream to get the exact size
+                        using (var compressedDataStream = new MemoryStream())
+                        using (var tempWriter = new BinaryWriter(compressedDataStream))
                         {
-                            CheckPauseState(cancellationToken);
-                            string code = codes[b];
-                            foreach (char bit in code)
-                            {
-                                buffer = (byte)((buffer << 1) | (bit == '1' ? 1 : 0));
-                                bufferLength++;
+                            byte buffer = 0;
+                            int bufferLength = 0;
 
-                                if (bufferLength == 8)
+                            foreach (byte b in data)
+                            {
+                                CheckPauseState(cancellationToken);
+                                string code = codes[b];
+                                foreach (char bit in code)
                                 {
-                                    writer.Write(buffer);
-                                    buffer = 0;
-                                    bufferLength = 0;
+                                    buffer = (byte)((buffer << 1) | (bit == '1' ? 1 : 0));
+                                    bufferLength++;
+
+                                    if (bufferLength == 8)
+                                    {
+                                        tempWriter.Write(buffer);
+                                        buffer = 0;
+                                        bufferLength = 0;
+                                    }
                                 }
                             }
-                        }
 
-                        if (bufferLength > 0)
-                        {
-                            buffer <<= (8 - bufferLength);
-                            writer.Write(buffer);
+                            if (bufferLength > 0)
+                            {
+                                buffer <<= (8 - bufferLength);
+                                tempWriter.Write(buffer);
+                            }
+
+                            // Write the compressed data size, then the compressed data
+                            byte[] compressedData = compressedDataStream.ToArray();
+                            writer.Write(compressedData.Length); // حجم البيانات المضغوطة
+                            writer.Write(compressedData); // البيانات المضغوطة
                         }
                     }
                 }
@@ -128,6 +139,7 @@ namespace FileCompressorApp
                         for (int j = 0; j < freqCount; j++)
                             frequencies[reader.ReadByte()] = reader.ReadInt32();
 
+                        int compressedDataSize = reader.ReadInt32(); // قراءة حجم البيانات المضغوطة
                         var root = BuildHuffmanTree(frequencies);
                         var decompressedData = new byte[originalSize];
                         var currentNode = root;
@@ -170,7 +182,44 @@ namespace FileCompressorApp
                 }
             }, cancellationToken);
         }
-    
+
+        public async Task<List<string>> ListFilesInArchiveAsync(string archivePath, string password = null)
+        {
+            return await Task.Run(() =>
+            {
+                var fileList = new List<string>();
+                using (var fs = new FileStream(archivePath, FileMode.Open))
+                using (var reader = new BinaryReader(fs))
+                {
+                    if (reader.ReadString() != "HUFFMAN_MULTI")
+                        throw new InvalidDataException("هذا ليس ملف مضغوط متعدد");
+
+                    int fileCount = reader.ReadInt32();
+
+                    for (int i = 0; i < fileCount; i++)
+                    {
+                        string fileName = reader.ReadString();
+                        fileList.Add(fileName);
+                        
+                        // Skip the file data without reading it
+                        int originalSize = reader.ReadInt32();
+                        int freqCount = reader.ReadInt32();
+                        
+                        // Skip frequency table
+                        for (int j = 0; j < freqCount; j++)
+                        {
+                            reader.ReadByte(); // symbol
+                            reader.ReadInt32(); // frequency
+                        }
+                        
+                        // Read and skip compressed data using the exact size
+                        int compressedDataSize = reader.ReadInt32(); // قراءة حجم البيانات المضغوطة
+                        reader.ReadBytes(compressedDataSize); // تخطي البيانات المضغوطة
+                    }
+                }
+                return fileList;
+            });
+        }
 
 
 
@@ -214,39 +263,49 @@ namespace FileCompressorApp
                         writer.Write(pair.Value);
                     }
 
-                    byte buffer = 0;
-                    int bufferLength = 0;
-                    int totalBytes = data.Length;
-
-                    for (int i = 0; i < totalBytes; i++)
+                    // First, compress the data to a memory stream to get the exact size
+                    using (var compressedDataStream = new MemoryStream())
+                    using (var tempWriter = new BinaryWriter(compressedDataStream))
                     {
-                        CheckPauseState(cancellationToken);
+                        byte buffer = 0;
+                        int bufferLength = 0;
+                        int totalBytes = data.Length;
 
-                        string code = codes[data[i]];
-                        foreach (char bit in code)
+                        for (int i = 0; i < totalBytes; i++)
                         {
-                            buffer = (byte)((buffer << 1) | (bit == '1' ? 1 : 0));
-                            bufferLength++;
+                            CheckPauseState(cancellationToken);
 
-                            if (bufferLength == 8)
+                            string code = codes[data[i]];
+                            foreach (char bit in code)
                             {
-                                writer.Write(buffer);
-                                buffer = 0;
-                                bufferLength = 0;
+                                buffer = (byte)((buffer << 1) | (bit == '1' ? 1 : 0));
+                                bufferLength++;
+
+                                if (bufferLength == 8)
+                                {
+                                    tempWriter.Write(buffer);
+                                    buffer = 0;
+                                    bufferLength = 0;
+                                }
+                            }
+
+                            if (i % 100 == 0)
+                            {
+                                int progress = (int)((i * 100.0) / totalBytes);
+                                progressCallback?.Invoke(progress);
                             }
                         }
 
-                        if (i % 100 == 0)
+                        if (bufferLength > 0)
                         {
-                            int progress = (int)((i * 100.0) / totalBytes);
-                            progressCallback?.Invoke(progress);
+                            buffer <<= (8 - bufferLength);
+                            tempWriter.Write(buffer);
                         }
-                    }
 
-                    if (bufferLength > 0)
-                    {
-                        buffer <<= (8 - bufferLength);
-                        writer.Write(buffer);
+                        // Write the compressed data size, then the compressed data
+                        byte[] compressedData = compressedDataStream.ToArray();
+                        writer.Write(compressedData.Length); // حجم البيانات المضغوطة
+                        writer.Write(compressedData); // البيانات المضغوطة
                     }
                 }
 
@@ -277,6 +336,7 @@ namespace FileCompressorApp
                     for (int i = 0; i < freqCount; i++)
                         frequencies[reader.ReadByte()] = reader.ReadInt32();
 
+                    int compressedDataSize = reader.ReadInt32(); // قراءة حجم البيانات المضغوطة
                     var root = BuildHuffmanTree(frequencies);
                     var decompressedData = new byte[originalSize];
                     var currentNode = root;

@@ -30,6 +30,7 @@ namespace FileCompressorApp
             this.label1 = new System.Windows.Forms.Label();
             this.btnMultiCompress = new System.Windows.Forms.Button();
             this.btnExtractSingle = new System.Windows.Forms.Button();
+            this.btnCompressFolder = new System.Windows.Forms.Button();
             this.groupBox1.SuspendLayout();
             this.SuspendLayout();
             // 
@@ -39,7 +40,7 @@ namespace FileCompressorApp
             this.btnCompress.Name = "btnCompress";
             this.btnCompress.Size = new System.Drawing.Size(150, 40);
             this.btnCompress.TabIndex = 0;
-            this.btnCompress.Text = "ضغط";
+            this.btnCompress.Text = "ضغط ملف واحد";
             this.btnCompress.UseVisualStyleBackColor = true;
             this.btnCompress.Click += new System.EventHandler(this.btnCompress_Click);
             // 
@@ -162,6 +163,16 @@ namespace FileCompressorApp
             this.btnExtractSingle.UseVisualStyleBackColor = true;
             this.btnExtractSingle.Click += new System.EventHandler(this.btnExtractSingle_Click);
             // 
+            // btnCompressFolder
+            // 
+            this.btnCompressFolder.Location = new System.Drawing.Point(230, 30);
+            this.btnCompressFolder.Name = "btnCompressFolder";
+            this.btnCompressFolder.Size = new System.Drawing.Size(150, 40);
+            this.btnCompressFolder.TabIndex = 14;
+            this.btnCompressFolder.Text = "ضغط مجلد";
+            this.btnCompressFolder.UseVisualStyleBackColor = true;
+            this.btnCompressFolder.Click += new System.EventHandler(this.btnCompressFolder_Click);
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
@@ -169,6 +180,7 @@ namespace FileCompressorApp
             this.ClientSize = new System.Drawing.Size(400, 420);
             this.Controls.Add(this.btnExtractSingle);
             this.Controls.Add(this.btnMultiCompress);
+            this.Controls.Add(this.btnCompressFolder);
             this.Controls.Add(this.label1);
             this.Controls.Add(this.txtPassword);
             this.Controls.Add(this.btnCompare);
@@ -202,6 +214,8 @@ namespace FileCompressorApp
         private System.Windows.Forms.Button btnCompare;
         private System.Windows.Forms.TextBox txtPassword;
         private System.Windows.Forms.Label label1;
-       
+        private System.Windows.Forms.Button btnMultiCompress;
+        private System.Windows.Forms.Button btnExtractSingle;
+        private System.Windows.Forms.Button btnCompressFolder;
     }
 }
