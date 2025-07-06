@@ -25,10 +25,6 @@ namespace FileCompressorApp
         public void Pause() => isPaused = true;
         public void Resume() { isPaused = false; lock (pauseLock) { Monitor.Pulse(pauseLock); } }
 
-
-
-
-
         public async Task CompressMultipleAsync(Dictionary<string, string> filePaths, string outputPath, string password = null,
                                         Action<int> progressCallback = null, CancellationToken cancellationToken = default)
         {
@@ -38,6 +34,7 @@ namespace FileCompressorApp
                 using (var writer = new BinaryWriter(fs))
                 {
                     writer.Write("FANO_MULTI"); // توقيع خاص بالملفات المتعددة
+                    writer.Write(!string.IsNullOrEmpty(password)); // هل الملف محمي بكلمة سر؟
                     writer.Write(filePaths.Count); // عدد الملفات
 
                     foreach (var file in filePaths)
@@ -56,7 +53,7 @@ namespace FileCompressorApp
                             writer.Write(pair.Value);
                         }
 
-                        // First, compress the data to a memory stream to get the exact size
+                        // Compress the data to a memory stream
                         using (var compressedDataStream = new MemoryStream())
                         using (var tempWriter = new BinaryWriter(compressedDataStream))
                         {
@@ -87,10 +84,15 @@ namespace FileCompressorApp
                                 tempWriter.Write(buffer);
                             }
 
-                            // Write the compressed data size, then the compressed data
+                            // Encrypt compressed data if password provided
                             byte[] compressedData = compressedDataStream.ToArray();
+                            if (!string.IsNullOrEmpty(password))
+                            {
+                                compressedData = PasswordProtection.Encrypt(compressedData, password);
+                            }
+
                             writer.Write(compressedData.Length); // حجم البيانات المضغوطة
-                            writer.Write(compressedData); // البيانات المضغوطة
+                            writer.Write(compressedData); // البيانات المضغوطة (مشفرة إذا كانت محمية)
                         }
                     }
                 }
@@ -108,6 +110,10 @@ namespace FileCompressorApp
                     if (reader.ReadString() != "FANO_MULTI")
                         throw new InvalidDataException("هذا ليس ملف مضغوط متعدد");
 
+                    bool isPasswordProtected = reader.ReadBoolean();
+                    if (isPasswordProtected && string.IsNullOrEmpty(password))
+                        throw new UnauthorizedAccessException("هذا الملف محمي بكلمة سر");
+
                     int fileCount = reader.ReadInt32();
                     string foundFileName = null;
 
@@ -121,36 +127,45 @@ namespace FileCompressorApp
                         for (int j = 0; j < freqCount; j++)
                             frequencies[reader.ReadByte()] = reader.ReadInt32();
 
-                        int compressedDataSize = reader.ReadInt32(); // قراءة حجم البيانات المضغوطة
-                        var codes = BuildShannonCodes(frequencies);
-                        var reverseCodes = codes.ToDictionary(x => x.Value, x => x.Key);
-                        var decompressedData = new byte[originalSize];
-                        string currentCode = "";
-                        int dataIndex = 0;
+                        int compressedDataSize = reader.ReadInt32();
+                        byte[] compressedData = reader.ReadBytes(compressedDataSize);
 
-                        while (dataIndex < originalSize)
+                        // Decrypt if password protected
+                        if (isPasswordProtected)
                         {
-                            CheckPauseState(cancellationToken);
-
-                            byte currentByte = reader.ReadByte();
-                            for (int j = 7; j >= 0; j--)
-                            {
-                                int bit = (currentByte >> j) & 1;
-                                currentCode += bit.ToString();
-
-                                if (reverseCodes.ContainsKey(currentCode))
-                                {
-                                    decompressedData[dataIndex++] = reverseCodes[currentCode];
-                                    currentCode = "";
-
-                                    if (dataIndex >= originalSize)
-                                        break;
-                                }
-                            }
+                            compressedData = PasswordProtection.Decrypt(compressedData, password);
                         }
 
                         if (fileName.Equals(fileToExtract, StringComparison.OrdinalIgnoreCase))
                         {
+                            var codes = BuildShannonCodes(frequencies);
+                            var reverseCodes = codes.ToDictionary(x => x.Value, x => x.Key);
+                            var decompressedData = new byte[originalSize];
+                            string currentCode = "";
+                            int dataIndex = 0;
+                            int byteIndex = 0;
+
+                            while (dataIndex < originalSize && byteIndex < compressedData.Length)
+                            {
+                                CheckPauseState(cancellationToken);
+
+                                byte currentByte = compressedData[byteIndex++];
+                                for (int j = 7; j >= 0; j--)
+                                {
+                                    int bit = (currentByte >> j) & 1;
+                                    currentCode += bit.ToString();
+
+                                    if (reverseCodes.ContainsKey(currentCode))
+                                    {
+                                        decompressedData[dataIndex++] = reverseCodes[currentCode];
+                                        currentCode = "";
+
+                                        if (dataIndex >= originalSize)
+                                            break;
+                                    }
+                                }
+                            }
+
                             File.WriteAllBytes(outputPath, decompressedData);
                             foundFileName = fileName;
                             break;
@@ -173,6 +188,10 @@ namespace FileCompressorApp
                     if (reader.ReadString() != "FANO_MULTI")
                         throw new InvalidDataException("هذا ليس ملف مضغوط متعدد");
 
+                    bool isPasswordProtected = reader.ReadBoolean();
+                    if (isPasswordProtected && string.IsNullOrEmpty(password))
+                        throw new UnauthorizedAccessException("هذا الملف محمي بكلمة سر");
+
                     int fileCount = reader.ReadInt32();
 
                     for (int i = 0; i < fileCount; i++)
@@ -191,15 +210,14 @@ namespace FileCompressorApp
                             reader.ReadInt32(); // frequency
                         }
                         
-                        // Read and skip compressed data using the exact size
-                        int compressedDataSize = reader.ReadInt32(); // قراءة حجم البيانات المضغوطة
-                        reader.ReadBytes(compressedDataSize); // تخطي البيانات المضغوطة
+                        // Skip compressed data using the exact size
+                        int compressedDataSize = reader.ReadInt32();
+                        reader.ReadBytes(compressedDataSize);
                     }
                 }
                 return fileList;
             });
         }
-
 
         public async Task<double> EstimateCompressionRatioAsync(string inputPath)
         {
@@ -228,6 +246,7 @@ namespace FileCompressorApp
                 using (var writer = new BinaryWriter(fs))
                 {
                     writer.Write("FANO"); // توقيع الملف
+                    writer.Write(!string.IsNullOrEmpty(password)); // هل الملف محمي بكلمة سر؟
                     writer.Write(Path.GetFileName(inputPath));
                     writer.Write(data.Length);
                     writer.Write(frequencies.Count);
@@ -238,7 +257,7 @@ namespace FileCompressorApp
                         writer.Write(pair.Value);
                     }
 
-                    // First, compress the data to a memory stream to get the exact size
+                    // Compress the data to a memory stream
                     using (var compressedDataStream = new MemoryStream())
                     using (var tempWriter = new BinaryWriter(compressedDataStream))
                     {
@@ -277,10 +296,15 @@ namespace FileCompressorApp
                             tempWriter.Write(buffer);
                         }
 
-                        // Write the compressed data size, then the compressed data
+                        // Encrypt compressed data if password provided
                         byte[] compressedData = compressedDataStream.ToArray();
+                        if (!string.IsNullOrEmpty(password))
+                        {
+                            compressedData = PasswordProtection.Encrypt(compressedData, password);
+                        }
+
                         writer.Write(compressedData.Length); // حجم البيانات المضغوطة
-                        writer.Write(compressedData); // البيانات المضغوطة
+                        writer.Write(compressedData); // البيانات المضغوطة (مشفرة إذا كانت محمية)
                     }
                 }
 
@@ -303,6 +327,10 @@ namespace FileCompressorApp
                     if (reader.ReadString() != "FANO")
                         throw new InvalidDataException("هذا ليس ملف مضغوط باستخدام خوارزمية فانو-شانون");
 
+                    bool isPasswordProtected = reader.ReadBoolean();
+                    if (isPasswordProtected && string.IsNullOrEmpty(password))
+                        throw new UnauthorizedAccessException("هذا الملف محمي بكلمة سر");
+
                     string fileName = reader.ReadString();
                     int originalSize = reader.ReadInt32();
                     int freqCount = reader.ReadInt32();
@@ -311,20 +339,29 @@ namespace FileCompressorApp
                     for (int i = 0; i < freqCount; i++)
                         frequencies[reader.ReadByte()] = reader.ReadInt32();
 
-                    int compressedDataSize = reader.ReadInt32(); // قراءة حجم البيانات المضغوطة
+                    int compressedDataSize = reader.ReadInt32();
+                    byte[] compressedData = reader.ReadBytes(compressedDataSize);
+
+                    // Decrypt if password protected
+                    if (isPasswordProtected)
+                    {
+                        compressedData = PasswordProtection.Decrypt(compressedData, password);
+                    }
+
                     var codes = BuildShannonCodes(frequencies);
                     var reverseCodes = codes.ToDictionary(x => x.Value, x => x.Key);
                     var decompressedData = new byte[originalSize];
                     string currentCode = "";
                     int dataIndex = 0;
+                    int byteIndex = 0;
                     long totalBits = originalSize * 8;
                     long bitsProcessed = 0;
 
-                    while (dataIndex < originalSize)
+                    while (dataIndex < originalSize && byteIndex < compressedData.Length)
                     {
                         CheckPauseState(cancellationToken);
 
-                        byte currentByte = reader.ReadByte();
+                        byte currentByte = compressedData[byteIndex++];
                         bitsProcessed += 8;
 
                         for (int i = 7; i >= 0; i--)
@@ -373,16 +410,11 @@ namespace FileCompressorApp
 
         private Dictionary<byte, string> BuildShannonCodes(Dictionary<byte, int> frequencies)
         {
-            var nodes = frequencies.Select(p => new ShannonNode
-            {
-                Symbol = p.Key,
-                Frequency = p.Value
-            })
-            .OrderByDescending(n => n.Frequency)
-            .ToList();
+            var nodes = frequencies.Select(p => new ShannonNode { Symbol = p.Key, Frequency = p.Value })
+                                  .OrderByDescending(n => n.Frequency)
+                                  .ToList();
 
             BuildCodesRecursive(nodes, 0, nodes.Count - 1);
-
             return nodes.ToDictionary(n => n.Symbol, n => n.Code);
         }
 
@@ -390,35 +422,35 @@ namespace FileCompressorApp
         {
             if (start >= end) return;
 
-            // حساب النقطة المثلى للتقسيم
-            int total = nodes.Skip(start).Take(end - start + 1).Sum(n => n.Frequency);
-            int sum = 0;
-            int splitIndex = start;
-
-            for (int i = start; i <= end; i++)
+            if (end - start == 1)
             {
-                sum += nodes[i].Frequency;
-                if (sum >= total / 2)
-                {
-                    // اختيار أفضل نقطة تقسيم
-                    int diff1 = Math.Abs(total - 2 * sum);
-                    int diff2 = Math.Abs(total - 2 * (sum - nodes[i].Frequency));
+                if (string.IsNullOrEmpty(nodes[start].Code)) nodes[start].Code = "0";
+                if (string.IsNullOrEmpty(nodes[end].Code)) nodes[end].Code = "1";
+                return;
+            }
 
-                    splitIndex = (diff1 < diff2) ? i : i - 1;
+            int totalFreq = nodes.Skip(start).Take(end - start + 1).Sum(n => n.Frequency);
+            int currentSum = 0;
+            int split = start;
+
+            for (int i = start; i < end; i++)
+            {
+                currentSum += nodes[i].Frequency;
+                if (currentSum >= totalFreq / 2)
+                {
+                    split = i;
                     break;
                 }
             }
 
-            // تعيين الأكواد للأجزاء
-            for (int i = start; i <= splitIndex; i++)
-                nodes[i].Code += "0";
+            for (int i = start; i <= split; i++)
+                nodes[i].Code = (nodes[i].Code ?? "") + "0";
 
-            for (int i = splitIndex + 1; i <= end; i++)
-                nodes[i].Code += "1";
+            for (int i = split + 1; i <= end; i++)
+                nodes[i].Code = (nodes[i].Code ?? "") + "1";
 
-            // تقسيم متكرر
-            BuildCodesRecursive(nodes, start, splitIndex);
-            BuildCodesRecursive(nodes, splitIndex + 1, end);
+            BuildCodesRecursive(nodes, start, split);
+            BuildCodesRecursive(nodes, split + 1, end);
         }
     }
 }
