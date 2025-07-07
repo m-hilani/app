@@ -460,68 +460,143 @@ namespace FileCompressorApp
                 using (var fs = new FileStream(inputPath, FileMode.Open))
                 using (var reader = new BinaryReader(fs))
                 {
-                    if (reader.ReadString() != "HUFFMAN")
+                    string signature = reader.ReadString();
+                    
+                    // Handle both single file and multi-file archives
+                    if (signature == "HUFFMAN_MULTI")
+                    {
+                        // This is a multi-file archive, extract the first file
+                        fs.Position = 0; // Reset to beginning
+                        using (var reader2 = new BinaryReader(fs))
+                        {
+                            reader2.ReadString(); // Skip signature
+                            bool isPasswordProtected = reader2.ReadBoolean();
+                            if (isPasswordProtected && string.IsNullOrEmpty(password))
+                                throw new UnauthorizedAccessException("هذا الملف محمي بكلمة سر");
+
+                            int fileCount = reader2.ReadInt32();
+                            if (fileCount == 0)
+                                throw new InvalidDataException("الأرشيف فارغ");
+
+                            // Extract the first file
+                            string fileName = reader2.ReadString();
+                            int originalSize = reader2.ReadInt32();
+                            int freqCount = reader2.ReadInt32();
+                            var frequencies = new Dictionary<byte, int>();
+
+                            for (int i = 0; i < freqCount; i++)
+                                frequencies[reader2.ReadByte()] = reader2.ReadInt32();
+
+                            int compressedDataSize = reader2.ReadInt32();
+                            byte[] compressedData = reader2.ReadBytes(compressedDataSize);
+
+                            // Decrypt if password protected
+                            if (isPasswordProtected)
+                            {
+                                compressedData = PasswordProtection.Decrypt(compressedData, password);
+                            }
+
+                            var root = BuildHuffmanTree(frequencies);
+                            var decompressedData = new byte[originalSize];
+                            var currentNode = root;
+                            int bitIndex = 0;
+                            byte currentByte = 0;
+                            int dataIndex = 0;
+                            int byteIndex = 0;
+
+                            while (dataIndex < originalSize && byteIndex < compressedData.Length)
+                            {
+                                CheckPauseState(cancellationToken);
+
+                                if (bitIndex == 0)
+                                {
+                                    currentByte = compressedData[byteIndex++];
+                                    bitIndex = 8;
+                                }
+
+                                int bit = (currentByte >> 7) & 1;
+                                currentByte <<= 1;
+                                bitIndex--;
+
+                                currentNode = (bit == 0) ? currentNode.Left : currentNode.Right;
+
+                                if (currentNode.IsLeaf)
+                                {
+                                    decompressedData[dataIndex++] = currentNode.Symbol;
+                                    currentNode = root;
+                                }
+                            }
+
+                            File.WriteAllBytes(outputPath, decompressedData);
+                        }
+                    }
+                    else if (signature == "HUFFMAN")
+                    {
+                        // This is a single file archive (legacy format)
+                        bool isPasswordProtected = reader.ReadBoolean();
+                        if (isPasswordProtected && string.IsNullOrEmpty(password))
+                            throw new UnauthorizedAccessException("هذا الملف محمي بكلمة سر");
+
+                        string fileName = reader.ReadString();
+                        int originalSize = reader.ReadInt32();
+                        int freqCount = reader.ReadInt32();
+                        var frequencies = new Dictionary<byte, int>();
+
+                        for (int i = 0; i < freqCount; i++)
+                            frequencies[reader.ReadByte()] = reader.ReadInt32();
+
+                        int compressedDataSize = reader.ReadInt32();
+                        byte[] compressedData = reader.ReadBytes(compressedDataSize);
+
+                        // Decrypt if password protected
+                        if (isPasswordProtected)
+                        {
+                            compressedData = PasswordProtection.Decrypt(compressedData, password);
+                        }
+
+                        var root = BuildHuffmanTree(frequencies);
+                        var decompressedData = new byte[originalSize];
+                        var currentNode = root;
+                        int bitIndex = 0;
+                        byte currentByte = 0;
+                        int dataIndex = 0;
+                        int byteIndex = 0;
+                        long totalBits = originalSize * 8;
+                        long bitsProcessed = 0;
+
+                        while (dataIndex < originalSize && byteIndex < compressedData.Length)
+                        {
+                            CheckPauseState(cancellationToken);
+
+                            if (bitIndex == 0)
+                            {
+                                currentByte = compressedData[byteIndex++];
+                                bitIndex = 8;
+                            }
+
+                            int bit = (currentByte >> 7) & 1;
+                            currentByte <<= 1;
+                            bitIndex--;
+
+                            currentNode = (bit == 0) ? currentNode.Left : currentNode.Right;
+
+                            if (currentNode.IsLeaf)
+                            {
+                                decompressedData[dataIndex++] = currentNode.Symbol;
+                                currentNode = root;
+                            }
+
+                            bitsProcessed++;
+                            if (bitsProcessed % 1000 == 0)
+                                progressCallback?.Invoke((int)((bitsProcessed * 100.0) / totalBits));
+                        }
+
+                        File.WriteAllBytes(outputPath, decompressedData);
+                    }
+                    else
+                    {
                         throw new InvalidDataException("هذا ليس ملف مضغوط باستخدام خوارزمية هوفمان");
-
-                    bool isPasswordProtected = reader.ReadBoolean();
-                    if (isPasswordProtected && string.IsNullOrEmpty(password))
-                        throw new UnauthorizedAccessException("هذا الملف محمي بكلمة سر");
-
-                    string fileName = reader.ReadString();
-                    int originalSize = reader.ReadInt32();
-                    int freqCount = reader.ReadInt32();
-                    var frequencies = new Dictionary<byte, int>();
-
-                    for (int i = 0; i < freqCount; i++)
-                        frequencies[reader.ReadByte()] = reader.ReadInt32();
-
-                    int compressedDataSize = reader.ReadInt32();
-                    byte[] compressedData = reader.ReadBytes(compressedDataSize);
-
-                    // Decrypt if password protected
-                    if (isPasswordProtected)
-                    {
-                        compressedData = PasswordProtection.Decrypt(compressedData, password);
                     }
-
-                    var root = BuildHuffmanTree(frequencies);
-                    var decompressedData = new byte[originalSize];
-                    var currentNode = root;
-                    int bitIndex = 0;
-                    byte currentByte = 0;
-                    int dataIndex = 0;
-                    int byteIndex = 0;
-                    long totalBits = originalSize * 8;
-                    long bitsProcessed = 0;
-
-                    while (dataIndex < originalSize && byteIndex < compressedData.Length)
-                    {
-                        CheckPauseState(cancellationToken);
-
-                        if (bitIndex == 0)
-                        {
-                            currentByte = compressedData[byteIndex++];
-                            bitIndex = 8;
-                        }
-
-                        int bit = (currentByte >> 7) & 1;
-                        currentByte <<= 1;
-                        bitIndex--;
-
-                        currentNode = (bit == 0) ? currentNode.Left : currentNode.Right;
-
-                        if (currentNode.IsLeaf)
-                        {
-                            decompressedData[dataIndex++] = currentNode.Symbol;
-                            currentNode = root;
-                        }
-
-                        bitsProcessed++;
-                        if (bitsProcessed % 1000 == 0)
-                            progressCallback?.Invoke((int)((bitsProcessed * 100.0) / totalBits));
-                    }
-
-                    File.WriteAllBytes(outputPath, decompressedData);
                 }
             }, cancellationToken);
         }

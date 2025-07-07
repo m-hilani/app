@@ -324,66 +324,138 @@ namespace FileCompressorApp
                 using (var fs = new FileStream(inputPath, FileMode.Open))
                 using (var reader = new BinaryReader(fs))
                 {
-                    if (reader.ReadString() != "FANO")
-                        throw new InvalidDataException("هذا ليس ملف مضغوط باستخدام خوارزمية فانو-شانون");
-
-                    bool isPasswordProtected = reader.ReadBoolean();
-                    if (isPasswordProtected && string.IsNullOrEmpty(password))
-                        throw new UnauthorizedAccessException("هذا الملف محمي بكلمة سر");
-
-                    string fileName = reader.ReadString();
-                    int originalSize = reader.ReadInt32();
-                    int freqCount = reader.ReadInt32();
-                    var frequencies = new Dictionary<byte, int>();
-
-                    for (int i = 0; i < freqCount; i++)
-                        frequencies[reader.ReadByte()] = reader.ReadInt32();
-
-                    int compressedDataSize = reader.ReadInt32();
-                    byte[] compressedData = reader.ReadBytes(compressedDataSize);
-
-                    // Decrypt if password protected
-                    if (isPasswordProtected)
+                    string signature = reader.ReadString();
+                    
+                    // Handle both single file and multi-file archives
+                    if (signature == "FANO_MULTI")
                     {
-                        compressedData = PasswordProtection.Decrypt(compressedData, password);
-                    }
-
-                    var codes = BuildShannonCodes(frequencies);
-                    var reverseCodes = codes.ToDictionary(x => x.Value, x => x.Key);
-                    var decompressedData = new byte[originalSize];
-                    string currentCode = "";
-                    int dataIndex = 0;
-                    int byteIndex = 0;
-                    long totalBits = originalSize * 8;
-                    long bitsProcessed = 0;
-
-                    while (dataIndex < originalSize && byteIndex < compressedData.Length)
-                    {
-                        CheckPauseState(cancellationToken);
-
-                        byte currentByte = compressedData[byteIndex++];
-                        bitsProcessed += 8;
-
-                        for (int i = 7; i >= 0; i--)
+                        // This is a multi-file archive, extract the first file
+                        fs.Position = 0; // Reset to beginning
+                        using (var reader2 = new BinaryReader(fs))
                         {
-                            int bit = (currentByte >> i) & 1;
-                            currentCode += bit.ToString();
+                            reader2.ReadString(); // Skip signature
+                            bool isPasswordProtected = reader2.ReadBoolean();
+                            if (isPasswordProtected && string.IsNullOrEmpty(password))
+                                throw new UnauthorizedAccessException("هذا الملف محمي بكلمة سر");
 
-                            if (reverseCodes.ContainsKey(currentCode))
+                            int fileCount = reader2.ReadInt32();
+                            if (fileCount == 0)
+                                throw new InvalidDataException("الأرشيف فارغ");
+
+                            // Extract the first file
+                            string fileName = reader2.ReadString();
+                            int originalSize = reader2.ReadInt32();
+                            int freqCount = reader2.ReadInt32();
+                            var frequencies = new Dictionary<byte, int>();
+
+                            for (int i = 0; i < freqCount; i++)
+                                frequencies[reader2.ReadByte()] = reader2.ReadInt32();
+
+                            int compressedDataSize = reader2.ReadInt32();
+                            byte[] compressedData = reader2.ReadBytes(compressedDataSize);
+
+                            // Decrypt if password protected
+                            if (isPasswordProtected)
                             {
-                                decompressedData[dataIndex++] = reverseCodes[currentCode];
-                                currentCode = "";
-
-                                if (dataIndex >= originalSize)
-                                    break;
+                                compressedData = PasswordProtection.Decrypt(compressedData, password);
                             }
+
+                            var codes = BuildShannonCodes(frequencies);
+                            var reverseCodes = codes.ToDictionary(x => x.Value, x => x.Key);
+                            var decompressedData = new byte[originalSize];
+                            string currentCode = "";
+                            int dataIndex = 0;
+                            int byteIndex = 0;
+
+                            while (dataIndex < originalSize && byteIndex < compressedData.Length)
+                            {
+                                CheckPauseState(cancellationToken);
+
+                                byte currentByte = compressedData[byteIndex++];
+                                for (int i = 7; i >= 0; i--)
+                                {
+                                    int bit = (currentByte >> i) & 1;
+                                    currentCode += bit.ToString();
+
+                                    if (reverseCodes.ContainsKey(currentCode))
+                                    {
+                                        decompressedData[dataIndex++] = reverseCodes[currentCode];
+                                        currentCode = "";
+
+                                        if (dataIndex >= originalSize)
+                                            break;
+                                    }
+                                }
+                            }
+
+                            File.WriteAllBytes(outputPath, decompressedData);
+                        }
+                    }
+                    else if (signature == "FANO")
+                    {
+                        // This is a single file archive (legacy format)
+                        bool isPasswordProtected = reader.ReadBoolean();
+                        if (isPasswordProtected && string.IsNullOrEmpty(password))
+                            throw new UnauthorizedAccessException("هذا الملف محمي بكلمة سر");
+
+                        string fileName = reader.ReadString();
+                        int originalSize = reader.ReadInt32();
+                        int freqCount = reader.ReadInt32();
+                        var frequencies = new Dictionary<byte, int>();
+
+                        for (int i = 0; i < freqCount; i++)
+                            frequencies[reader.ReadByte()] = reader.ReadInt32();
+
+                        int compressedDataSize = reader.ReadInt32();
+                        byte[] compressedData = reader.ReadBytes(compressedDataSize);
+
+                        // Decrypt if password protected
+                        if (isPasswordProtected)
+                        {
+                            compressedData = PasswordProtection.Decrypt(compressedData, password);
                         }
 
-                        if (bitsProcessed % 1000 == 0)
-                            progressCallback?.Invoke((int)((bitsProcessed * 100.0) / totalBits));
-                    }
+                        var codes = BuildShannonCodes(frequencies);
+                        var reverseCodes = codes.ToDictionary(x => x.Value, x => x.Key);
+                        var decompressedData = new byte[originalSize];
+                        string currentCode = "";
+                        int dataIndex = 0;
+                        int byteIndex = 0;
+                        long totalBits = originalSize * 8;
+                        long bitsProcessed = 0;
 
-                    File.WriteAllBytes(outputPath, decompressedData);
+                        while (dataIndex < originalSize && byteIndex < compressedData.Length)
+                        {
+                            CheckPauseState(cancellationToken);
+
+                            byte currentByte = compressedData[byteIndex++];
+                            bitsProcessed += 8;
+
+                            for (int i = 7; i >= 0; i--)
+                            {
+                                int bit = (currentByte >> i) & 1;
+                                currentCode += bit.ToString();
+
+                                if (reverseCodes.ContainsKey(currentCode))
+                                {
+                                    decompressedData[dataIndex++] = reverseCodes[currentCode];
+                                    currentCode = "";
+
+                                    if (dataIndex >= originalSize)
+                                        break;
+                                }
+                            }
+
+                            if (bitsProcessed % 1000 == 0)
+                                progressCallback?.Invoke((int)((bitsProcessed * 100.0) / totalBits));
+                        }
+
+                        File.WriteAllBytes(outputPath, decompressedData);
+                    }
+                    else
+                    {
+                        throw new InvalidDataException("هذا ليس ملف مضغوط باستخدام خوارزمية فانو-شانون");
+                    }
                 }
             }, cancellationToken);
         }

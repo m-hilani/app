@@ -13,11 +13,19 @@ namespace FileCompressorApp
         private ICompressionAlgorithm currentAlgorithm;
         private CancellationTokenSource cts;
         private bool isPaused = false;
+        private string contextMenuFilePath;
+        private string contextMenuOperation;
 
         public Form1()
         {
             InitializeComponent();
             currentAlgorithm = new HuffmanCompressor(); // افتراضيًا هوفمان
+        }
+
+        public Form1(string operation, string filePath) : this()
+        {
+            contextMenuOperation = operation;
+            contextMenuFilePath = filePath;
         }
 
         private async void btnMultiCompress_Click(object sender, EventArgs e)
@@ -45,8 +53,26 @@ namespace FileCompressorApp
             {
                 try
                 {
+                    // Auto-detect the algorithm based on file extension
+                    ICompressionAlgorithm extractAlgorithm;
+                    if (ofd.FileName.EndsWith(".huff", StringComparison.OrdinalIgnoreCase))
+                    {
+                        extractAlgorithm = new HuffmanCompressor();
+                        radioHuffman.Checked = true;
+                    }
+                    else if (ofd.FileName.EndsWith(".fs", StringComparison.OrdinalIgnoreCase))
+                    {
+                        extractAlgorithm = new FanoShannonCompressor();
+                        radioFanoShannon.Checked = true;
+                    }
+                    else
+                    {
+                        MessageBox.Show("نوع الملف المضغوط غير مدعوم. يجب أن يكون .huff أو .fs", "خطأ", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+
                     // Get the list of files in the archive
-                    var fileList = await currentAlgorithm.ListFilesInArchiveAsync(ofd.FileName, txtPassword.Text);
+                    var fileList = await extractAlgorithm.ListFilesInArchiveAsync(ofd.FileName, txtPassword.Text);
                     
                     if (fileList.Count == 0)
                     {
@@ -72,7 +98,7 @@ namespace FileCompressorApp
                             try
                             {
                                 await StartOperationAsync(() =>
-                                    currentAlgorithm.ExtractSingleFileAsync(ofd.FileName, inputForm.FileNameToExtract,
+                                    extractAlgorithm.ExtractSingleFileAsync(ofd.FileName, inputForm.FileNameToExtract,
                                                                           sfd.FileName, txtPassword.Text, UpdateProgress, cts.Token));
                                 MessageBox.Show($"تم استخراج الملف بنجاح!", "نجاح",
                                                 MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -91,20 +117,7 @@ namespace FileCompressorApp
             }
         }
 
-        private async void btnCompress_Click(object sender, EventArgs e)
-        {
-            var ofd = new OpenFileDialog();
-            if (ofd.ShowDialog() == DialogResult.OK)
-            {
-                var sfd = new SaveFileDialog();
-                sfd.Filter = currentAlgorithm is HuffmanCompressor ? "ملف Huffman مضغوط|*.huff" : "ملف Fano-Shannon مضغوط|*.fs";
-                if (sfd.ShowDialog() == DialogResult.OK)
-                {
-                    await StartOperationAsync(() =>
-                        currentAlgorithm.CompressAsync(ofd.FileName, sfd.FileName, txtPassword.Text, UpdateProgress, cts.Token));
-                }
-            }
-        }
+
 
         private async void btnDecompress_Click(object sender, EventArgs e)
         {
@@ -112,11 +125,29 @@ namespace FileCompressorApp
             ofd.Filter = "ملفات مضغوطة|*.huff;*.fs";
             if (ofd.ShowDialog() == DialogResult.OK)
             {
+                // Auto-detect the algorithm based on file extension
+                ICompressionAlgorithm decompressAlgorithm;
+                if (ofd.FileName.EndsWith(".huff", StringComparison.OrdinalIgnoreCase))
+                {
+                    decompressAlgorithm = new HuffmanCompressor();
+                    radioHuffman.Checked = true;
+                }
+                else if (ofd.FileName.EndsWith(".fs", StringComparison.OrdinalIgnoreCase))
+                {
+                    decompressAlgorithm = new FanoShannonCompressor();
+                    radioFanoShannon.Checked = true;
+                }
+                else
+                {
+                    MessageBox.Show("نوع الملف المضغوط غير مدعوم. يجب أن يكون .huff أو .fs", "خطأ", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
                 var sfd = new SaveFileDialog();
                 if (sfd.ShowDialog() == DialogResult.OK)
                 {
                     await StartOperationAsync(() =>
-                        currentAlgorithm.DecompressAsync(ofd.FileName, sfd.FileName, txtPassword.Text, UpdateProgress, cts.Token));
+                        decompressAlgorithm.DecompressAsync(ofd.FileName, sfd.FileName, txtPassword.Text, UpdateProgress, cts.Token));
                 }
             }
         }
@@ -156,7 +187,6 @@ namespace FileCompressorApp
 
         private void DisableOperationButtons()
         {
-            btnCompress.Enabled = false;
             btnDecompress.Enabled = false;
             btnMultiCompress.Enabled = false;
             btnExtractSingle.Enabled = false;
@@ -166,7 +196,6 @@ namespace FileCompressorApp
 
         private void EnableOperationButtons()
         {
-            btnCompress.Enabled = true;
             btnDecompress.Enabled = true;
             btnMultiCompress.Enabled = true;
             btnExtractSingle.Enabled = true;
@@ -298,9 +327,149 @@ namespace FileCompressorApp
             }
         }
 
-        private void Form1_Load(object sender, EventArgs e)
+        private async void Form1_Load(object sender, EventArgs e)
         {
-            // يمكن إضافة أي تهيئة إضافية هنا
+            // Handle context menu operations
+            if (!string.IsNullOrEmpty(contextMenuOperation) && !string.IsNullOrEmpty(contextMenuFilePath))
+            {
+                await HandleContextMenuOperation();
+            }
+        }
+
+        private async Task HandleContextMenuOperation()
+        {
+            try
+            {
+                switch (contextMenuOperation.ToLower())
+                {
+                    case "/compress":
+                    case "-compress":
+                        await AutoCompressFile(contextMenuFilePath);
+                        break;
+                    case "/decompress":
+                    case "-decompress":
+                        await AutoDecompressFile(contextMenuFilePath);
+                        break;
+                    case "/compressfolder":
+                    case "-compressfolder":
+                        await AutoCompressFolder(contextMenuFilePath);
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"خطأ في العملية: {ex.Message}", "خطأ", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private async Task AutoCompressFile(string filePath)
+        {
+            // Set the output path
+            string outputPath = filePath + ".huff";
+            
+            // Check if output file already exists
+            if (File.Exists(outputPath))
+            {
+                var result = MessageBox.Show(
+                    $"الملف المضغوط موجود مسبقاً:\n{outputPath}\n\nهل تريد استبداله؟",
+                    "تأكيد الاستبدال",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question);
+                
+                if (result != DialogResult.Yes)
+                    return;
+            }
+
+            // Show the main UI and start compression
+            lblStatus.Text = $"تم تحديد الملف للضغط: {Path.GetFileName(filePath)}";
+            
+            await StartOperationAsync(() =>
+                currentAlgorithm.CompressAsync(filePath, outputPath, txtPassword.Text, UpdateProgress, cts.Token));
+        }
+
+        private async Task AutoDecompressFile(string filePath)
+        {
+            // Determine the algorithm based on file extension
+            if (filePath.EndsWith(".huff", StringComparison.OrdinalIgnoreCase))
+            {
+                currentAlgorithm = new HuffmanCompressor();
+            }
+            else if (filePath.EndsWith(".fs", StringComparison.OrdinalIgnoreCase))
+            {
+                currentAlgorithm = new FanoShannonCompressor();
+                radioFanoShannon.Checked = true;
+            }
+            else
+            {
+                MessageBox.Show("نوع الملف المضغوط غير مدعوم. يجب أن يكون .huff أو .fs", "خطأ", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            string outputPath = filePath.Substring(0, filePath.LastIndexOf('.'));
+            
+            // Check if output file already exists
+            if (File.Exists(outputPath))
+            {
+                var result = MessageBox.Show(
+                    $"الملف المفكوك موجود مسبقاً:\n{outputPath}\n\nهل تريد استبداله؟",
+                    "تأكيد الاستبدال",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question);
+                
+                if (result != DialogResult.Yes)
+                    return;
+            }
+
+            // Show the main UI and start decompression
+            lblStatus.Text = $"تم تحديد الملف لفك الضغط: {Path.GetFileName(filePath)}";
+            
+            await StartOperationAsync(() =>
+                currentAlgorithm.DecompressAsync(filePath, outputPath, txtPassword.Text, UpdateProgress, cts.Token));
+        }
+
+        private async Task AutoCompressFolder(string folderPath)
+        {
+            if (!Directory.Exists(folderPath))
+            {
+                MessageBox.Show("المجلد غير موجود: " + folderPath, "خطأ", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            // Get all files in folder
+            var files = Directory.GetFiles(folderPath, "*", SearchOption.AllDirectories);
+            if (files.Length == 0)
+            {
+                MessageBox.Show("لا توجد ملفات في المجلد للضغط!", "تحذير", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            var fileDictionary = new Dictionary<string, string>();
+            foreach (var file in files)
+            {
+                string relativePath = GetRelativePath(folderPath, file);
+                fileDictionary[file] = relativePath;
+            }
+
+            string outputPath = folderPath + ".huff";
+            
+            // Check if output file already exists
+            if (File.Exists(outputPath))
+            {
+                var result = MessageBox.Show(
+                    $"الملف المضغوط موجود مسبقاً:\n{outputPath}\n\nهل تريد استبداله؟",
+                    "تأكيد الاستبدال",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question);
+                
+                if (result != DialogResult.Yes)
+                    return;
+            }
+
+            // Show the main UI and start compression
+            lblStatus.Text = $"تم تحديد المجلد للضغط: {Path.GetFileName(folderPath)} ({files.Length} ملف)";
+            
+            await StartOperationAsync(() =>
+                currentAlgorithm.CompressMultipleAsync(fileDictionary, outputPath, txtPassword.Text, UpdateProgress, cts.Token));
         }
 
         private async void btnCompressFolder_Click(object sender, EventArgs e)

@@ -17,7 +17,6 @@ namespace FileCompressorApp
 
         private void InitializeComponent()
         {
-            this.btnCompress = new System.Windows.Forms.Button();
             this.btnDecompress = new System.Windows.Forms.Button();
             this.progressBar1 = new System.Windows.Forms.ProgressBar();
             this.lblStatus = new System.Windows.Forms.Label();
@@ -35,19 +34,9 @@ namespace FileCompressorApp
             this.groupBox1.SuspendLayout();
             this.SuspendLayout();
             // 
-            // btnCompress
-            // 
-            this.btnCompress.Location = new System.Drawing.Point(30, 30);
-            this.btnCompress.Name = "btnCompress";
-            this.btnCompress.Size = new System.Drawing.Size(150, 40);
-            this.btnCompress.TabIndex = 0;
-            this.btnCompress.Text = "ضغط ملف واحد";
-            this.btnCompress.UseVisualStyleBackColor = true;
-            this.btnCompress.Click += new System.EventHandler(this.btnCompress_Click);
-            // 
             // btnDecompress
             // 
-            this.btnDecompress.Location = new System.Drawing.Point(30, 80);
+            this.btnDecompress.Location = new System.Drawing.Point(30, 30);
             this.btnDecompress.Name = "btnDecompress";
             this.btnDecompress.Size = new System.Drawing.Size(150, 40);
             this.btnDecompress.TabIndex = 1;
@@ -57,7 +46,7 @@ namespace FileCompressorApp
             // 
             // progressBar1
             // 
-            this.progressBar1.Location = new System.Drawing.Point(30, 270);
+            this.progressBar1.Location = new System.Drawing.Point(30, 220);
             this.progressBar1.Name = "progressBar1";
             this.progressBar1.Size = new System.Drawing.Size(430, 30);
             this.progressBar1.TabIndex = 2;
@@ -65,7 +54,7 @@ namespace FileCompressorApp
             // lblStatus
             // 
             this.lblStatus.AutoSize = true;
-            this.lblStatus.Location = new System.Drawing.Point(30, 250);
+            this.lblStatus.Location = new System.Drawing.Point(30, 200);
             this.lblStatus.Name = "lblStatus";
             this.lblStatus.Size = new System.Drawing.Size(32, 17);
             this.lblStatus.TabIndex = 3;
@@ -74,7 +63,7 @@ namespace FileCompressorApp
             // btnPauseResume
             // 
             this.btnPauseResume.Enabled = false;
-            this.btnPauseResume.Location = new System.Drawing.Point(230, 80);
+            this.btnPauseResume.Location = new System.Drawing.Point(230, 30);
             this.btnPauseResume.Name = "btnPauseResume";
             this.btnPauseResume.Size = new System.Drawing.Size(110, 40);
             this.btnPauseResume.TabIndex = 5;
@@ -85,7 +74,7 @@ namespace FileCompressorApp
             // btnCancel
             // 
             this.btnCancel.Enabled = false;
-            this.btnCancel.Location = new System.Drawing.Point(350, 80);
+            this.btnCancel.Location = new System.Drawing.Point(350, 30);
             this.btnCancel.Name = "btnCancel";
             this.btnCancel.Size = new System.Drawing.Size(110, 40);
             this.btnCancel.TabIndex = 15;
@@ -121,7 +110,7 @@ namespace FileCompressorApp
             // 
             this.groupBox1.Controls.Add(this.radioHuffman);
             this.groupBox1.Controls.Add(this.radioFanoShannon);
-            this.groupBox1.Location = new System.Drawing.Point(30, 320);
+            this.groupBox1.Location = new System.Drawing.Point(30, 270);
             this.groupBox1.Name = "groupBox1";
             this.groupBox1.Size = new System.Drawing.Size(430, 80);
             this.groupBox1.TabIndex = 8;
@@ -130,7 +119,7 @@ namespace FileCompressorApp
             // 
             // btnCompare
             // 
-            this.btnCompare.Location = new System.Drawing.Point(310, 180);
+            this.btnCompare.Location = new System.Drawing.Point(310, 130);
             this.btnCompare.Name = "btnCompare";
             this.btnCompare.Size = new System.Drawing.Size(150, 40);
             this.btnCompare.TabIndex = 9;
@@ -140,7 +129,7 @@ namespace FileCompressorApp
             // 
             // txtPassword
             // 
-            this.txtPassword.Location = new System.Drawing.Point(30, 200);
+            this.txtPassword.Location = new System.Drawing.Point(30, 150);
             this.txtPassword.Name = "txtPassword";
             this.txtPassword.PasswordChar = '*';
             this.txtPassword.Size = new System.Drawing.Size(150, 22);
@@ -149,7 +138,7 @@ namespace FileCompressorApp
             // label1
             // 
             this.label1.AutoSize = true;
-            this.label1.Location = new System.Drawing.Point(30, 180);
+            this.label1.Location = new System.Drawing.Point(30, 130);
             this.label1.Name = "label1";
             this.label1.Size = new System.Drawing.Size(56, 17);
             this.label1.TabIndex = 11;
@@ -157,17 +146,17 @@ namespace FileCompressorApp
             // 
             // btnMultiCompress
             // 
-            this.btnMultiCompress.Location = new System.Drawing.Point(30, 130);
+            this.btnMultiCompress.Location = new System.Drawing.Point(30, 80);
             this.btnMultiCompress.Name = "btnMultiCompress";
             this.btnMultiCompress.Size = new System.Drawing.Size(150, 40);
             this.btnMultiCompress.TabIndex = 12;
-            this.btnMultiCompress.Text = "ضغط عدة ملفات";
+            this.btnMultiCompress.Text = "ضغط الملفات";
             this.btnMultiCompress.UseVisualStyleBackColor = true;
             this.btnMultiCompress.Click += new System.EventHandler(this.btnMultiCompress_Click);
             // 
             // btnExtractSingle
             // 
-            this.btnExtractSingle.Location = new System.Drawing.Point(190, 130);
+            this.btnExtractSingle.Location = new System.Drawing.Point(190, 80);
             this.btnExtractSingle.Name = "btnExtractSingle";
             this.btnExtractSingle.Size = new System.Drawing.Size(150, 40);
             this.btnExtractSingle.TabIndex = 13;
@@ -177,7 +166,7 @@ namespace FileCompressorApp
             // 
             // btnCompressFolder
             // 
-            this.btnCompressFolder.Location = new System.Drawing.Point(350, 130);
+            this.btnCompressFolder.Location = new System.Drawing.Point(350, 80);
             this.btnCompressFolder.Name = "btnCompressFolder";
             this.btnCompressFolder.Size = new System.Drawing.Size(110, 40);
             this.btnCompressFolder.TabIndex = 14;
@@ -189,7 +178,7 @@ namespace FileCompressorApp
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(480, 420);
+            this.ClientSize = new System.Drawing.Size(480, 370);
             this.Controls.Add(this.btnCancel);
             this.Controls.Add(this.btnExtractSingle);
             this.Controls.Add(this.btnMultiCompress);
@@ -202,7 +191,6 @@ namespace FileCompressorApp
             this.Controls.Add(this.lblStatus);
             this.Controls.Add(this.progressBar1);
             this.Controls.Add(this.btnDecompress);
-            this.Controls.Add(this.btnCompress);
             this.Name = "Form1";
             this.RightToLeft = System.Windows.Forms.RightToLeft.Yes;
             this.RightToLeftLayout = true;
@@ -216,7 +204,6 @@ namespace FileCompressorApp
         }
         #endregion
 
-        private System.Windows.Forms.Button btnCompress;
         private System.Windows.Forms.Button btnDecompress;
         private System.Windows.Forms.ProgressBar progressBar1;
         private System.Windows.Forms.Label lblStatus;

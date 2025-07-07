@@ -1,0 +1,5 @@
+C:\Users\mahmo\OneDrive\Documents\College\4\2\MM\app\app\app\obj\Release\app.csproj.AssemblyReference.cache
+C:\Users\mahmo\OneDrive\Documents\College\4\2\MM\app\app\app\obj\Release\FileCompressorApp.Form1.resources
+C:\Users\mahmo\OneDrive\Documents\College\4\2\MM\app\app\app\obj\Release\app.Properties.Resources.resources
+C:\Users\mahmo\OneDrive\Documents\College\4\2\MM\app\app\app\obj\Release\app.csproj.GenerateResource.cache
+C:\Users\mahmo\OneDrive\Documents\College\4\2\MM\app\app\app\obj\Release\app.csproj.CoreCompileInputs.cache
