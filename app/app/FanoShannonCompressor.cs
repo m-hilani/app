@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -25,11 +26,216 @@ namespace FileCompressorApp
         public void Pause() => isPaused = true;
         public void Resume() { isPaused = false; lock (pauseLock) { Monitor.Pulse(pauseLock); } }
 
+        // Parallel compression helper method
+        private byte[] CompressDataParallel(byte[] data, Dictionary<byte, string> codes, 
+                                           ThreadSafeProgressReporter progressReporter, 
+                                           CancellationToken cancellationToken)
+        {
+            if (data.Length < CompressionConfig.MinFileSizeForChunking)
+            {
+                // For small files, use sequential compression
+                return CompressDataSequential(data, codes, progressReporter, cancellationToken);
+            }
+
+            // Split data into chunks for parallel processing
+            int chunkSize = CompressionConfig.ChunkSizeBytes;
+            var chunks = new List<ArraySegment<byte>>();
+            
+            for (int i = 0; i < data.Length; i += chunkSize)
+            {
+                int currentChunkSize = Math.Min(chunkSize, data.Length - i);
+                chunks.Add(new ArraySegment<byte>(data, i, currentChunkSize));
+            }
+
+            // Compress chunks in parallel
+            var compressedChunks = new ConcurrentBag<CompressedChunk>();
+            var processedChunks = 0;
+            var totalChunks = chunks.Count;
+
+            var parallelOptions = new ParallelOptions
+            {
+                MaxDegreeOfParallelism = CompressionConfig.MaxThreads,
+                CancellationToken = cancellationToken
+            };
+
+            Parallel.ForEach(chunks.Select((chunk, index) => new { chunk, index }), parallelOptions, item =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                CheckPauseState(cancellationToken);
+
+                var chunkData = item.chunk.ToArray();
+                var compressedData = CompressChunk(chunkData, codes, cancellationToken);
+                
+                compressedChunks.Add(new CompressedChunk
+                {
+                    Index = item.index,
+                    Data = compressedData,
+                    OriginalStartIndex = item.chunk.Offset,
+                    OriginalLength = item.chunk.Count
+                });
+
+                var completed = Interlocked.Increment(ref processedChunks);
+                progressReporter?.ReportProgress((int)((completed * 100.0) / totalChunks));
+            });
+
+            // Assemble compressed chunks in order
+            var orderedChunks = compressedChunks.OrderBy(c => c.Index).ToList();
+            using (var finalStream = new MemoryStream())
+            {
+                foreach (var chunk in orderedChunks)
+                {
+                    finalStream.Write(chunk.Data, 0, chunk.Data.Length);
+                }
+                return finalStream.ToArray();
+            }
+        }
+
+        // Sequential compression for small files or fallback
+        private byte[] CompressDataSequential(byte[] data, Dictionary<byte, string> codes, 
+                                             ThreadSafeProgressReporter progressReporter, 
+                                             CancellationToken cancellationToken)
+        {
+            using (var compressedDataStream = new MemoryStream())
+            using (var tempWriter = new BinaryWriter(compressedDataStream))
+            {
+                byte buffer = 0;
+                int bufferLength = 0;
+                int totalBytes = data.Length;
+
+                for (int i = 0; i < totalBytes; i++)
+                {
+                    CheckPauseState(cancellationToken);
+                    string code = codes[data[i]];
+                    foreach (char bit in code)
+                    {
+                        buffer = (byte)((buffer << 1) | (bit == '1' ? 1 : 0));
+                        bufferLength++;
+
+                        if (bufferLength == 8)
+                        {
+                            tempWriter.Write(buffer);
+                            buffer = 0;
+                            bufferLength = 0;
+                        }
+                    }
+
+                    if (i % 1000 == 0 || i == totalBytes - 1)
+                    {
+                        int progress = (int)((i * 100.0) / totalBytes);
+                        progressReporter?.ReportProgress(progress);
+                    }
+                }
+
+                if (bufferLength > 0)
+                {
+                    buffer <<= (8 - bufferLength);
+                    tempWriter.Write(buffer);
+                }
+
+                return compressedDataStream.ToArray();
+            }
+        }
+
+        // Compress a single chunk
+        private byte[] CompressChunk(byte[] chunkData, Dictionary<byte, string> codes, CancellationToken cancellationToken)
+        {
+            using (var compressedStream = new MemoryStream())
+            using (var writer = new BinaryWriter(compressedStream))
+            {
+                byte buffer = 0;
+                int bufferLength = 0;
+
+                foreach (byte b in chunkData)
+                {
+                    CheckPauseState(cancellationToken);
+                    string code = codes[b];
+                    foreach (char bit in code)
+                    {
+                        buffer = (byte)((buffer << 1) | (bit == '1' ? 1 : 0));
+                        bufferLength++;
+
+                        if (bufferLength == 8)
+                        {
+                            writer.Write(buffer);
+                            buffer = 0;
+                            bufferLength = 0;
+                        }
+                    }
+                }
+
+                if (bufferLength > 0)
+                {
+                    buffer <<= (8 - bufferLength);
+                    writer.Write(buffer);
+                }
+
+                return compressedStream.ToArray();
+            }
+        }
+
+        // Parallel file processing helper
+        private class FileCompressionTask
+        {
+            public string FilePath { get; set; }
+            public string RelativePath { get; set; }
+            public byte[] Data { get; set; }
+            public Dictionary<byte, int> Frequencies { get; set; }
+            public Dictionary<byte, string> Codes { get; set; }
+            public byte[] CompressedData { get; set; }
+            public int Index { get; set; }
+        }
+
         public async Task CompressMultipleAsync(Dictionary<string, string> filePaths, string outputPath, string password = null,
                                         Action<int> progressCallback = null, CancellationToken cancellationToken = default)
         {
             await Task.Run(() =>
             {
+                var progressReporter = new ThreadSafeProgressReporter(progressCallback);
+                var totalFiles = filePaths.Count;
+                
+                // Phase 1: Parallel file processing (read, analyze, compress)
+                var fileTasks = new List<FileCompressionTask>();
+                var fileArray = filePaths.ToArray();
+                
+                for (int i = 0; i < fileArray.Length; i++)
+                {
+                    var file = fileArray[i];
+                    fileTasks.Add(new FileCompressionTask
+                    {
+                        FilePath = file.Key,
+                        RelativePath = file.Value,
+                        Index = i
+                    });
+                }
+
+                // Process files in parallel
+                var parallelOptions = new ParallelOptions
+                {
+                    MaxDegreeOfParallelism = CompressionConfig.MaxThreads,
+                    CancellationToken = cancellationToken
+                };
+
+                var processedFiles = 0;
+                Parallel.ForEach(fileTasks, parallelOptions, task =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    CheckPauseState(cancellationToken);
+
+                    // Read and analyze file
+                    task.Data = File.ReadAllBytes(task.FilePath);
+                    task.Frequencies = CalculateFrequencies(task.Data);
+                    task.Codes = BuildShannonCodes(task.Frequencies);
+
+                    // Compress file data
+                    var fileProgressReporter = new ThreadSafeProgressReporter(null); // No individual progress for parallel files
+                    task.CompressedData = CompressDataParallel(task.Data, task.Codes, fileProgressReporter, cancellationToken);
+
+                    // Update overall progress
+                    var completed = Interlocked.Increment(ref processedFiles);
+                    progressReporter.ReportProgress((int)((completed * 80.0) / totalFiles)); // Use 80% for processing
+                });
+
+                // Phase 2: Sequential file writing (to maintain archive format)
                 using (var fs = new FileStream(outputPath, FileMode.Create))
                 using (var writer = new BinaryWriter(fs))
                 {
@@ -37,80 +243,39 @@ namespace FileCompressorApp
                     writer.Write(!string.IsNullOrEmpty(password)); // هل الملف محمي بكلمة سر؟
                     writer.Write(filePaths.Count); // عدد الملفات
 
-                    int totalFiles = filePaths.Count;
-                    int currentFileIndex = 0;
-
-                    foreach (var file in filePaths)
+                    // Write files in order
+                    var orderedTasks = fileTasks.OrderBy(t => t.Index).ToList();
+                    for (int i = 0; i < orderedTasks.Count; i++)
                     {
-                        byte[] data = File.ReadAllBytes(file.Key);
-                        var frequencies = CalculateFrequencies(data);
-                        var codes = BuildShannonCodes(frequencies);
+                        var task = orderedTasks[i];
+                        
+                        writer.Write(Path.GetFileName(task.FilePath)); // اسم الملف
+                        writer.Write(task.Data.Length); // حجم الملف الأصلي
+                        writer.Write(task.Frequencies.Count); // عدد الترددات
 
-                        writer.Write(Path.GetFileName(file.Key)); // اسم الملف
-                        writer.Write(data.Length); // حجم الملف الأصلي
-                        writer.Write(frequencies.Count); // عدد الترددات
-
-                        foreach (var pair in frequencies)
+                        foreach (var pair in task.Frequencies)
                         {
                             writer.Write(pair.Key);
                             writer.Write(pair.Value);
                         }
 
-                        // Compress the data to a memory stream
-                        using (var compressedDataStream = new MemoryStream())
-                        using (var tempWriter = new BinaryWriter(compressedDataStream))
+                        // Encrypt compressed data if password provided
+                        byte[] compressedData = task.CompressedData;
+                        if (!string.IsNullOrEmpty(password))
                         {
-                            byte buffer = 0;
-                            int bufferLength = 0;
-                            int totalBytes = data.Length;
-
-                            for (int i = 0; i < totalBytes; i++)
-                            {
-                                CheckPauseState(cancellationToken);
-                                string code = codes[data[i]];
-                                foreach (char bit in code)
-                                {
-                                    buffer = (byte)((buffer << 1) | (bit == '1' ? 1 : 0));
-                                    bufferLength++;
-
-                                    if (bufferLength == 8)
-                                    {
-                                        tempWriter.Write(buffer);
-                                        buffer = 0;
-                                        bufferLength = 0;
-                                    }
-                                }
-
-                                // Update progress for current file within the overall progress
-                                if (i % 1000 == 0 || i == totalBytes - 1)
-                                {
-                                    int fileProgress = (int)((i * 100.0) / totalBytes);
-                                    int overallProgress = (int)((currentFileIndex * 100.0 + fileProgress) / totalFiles);
-                                    progressCallback?.Invoke(overallProgress);
-                                }
-                            }
-
-                            if (bufferLength > 0)
-                            {
-                                buffer <<= (8 - bufferLength);
-                                tempWriter.Write(buffer);
-                            }
-
-                            // Encrypt compressed data if password provided
-                            byte[] compressedData = compressedDataStream.ToArray();
-                            if (!string.IsNullOrEmpty(password))
-                            {
-                                compressedData = PasswordProtection.Encrypt(compressedData, password);
-                            }
-
-                            writer.Write(compressedData.Length); // حجم البيانات المضغوطة
-                            writer.Write(compressedData); // البيانات المضغوطة (مشفرة إذا كانت محمية)
+                            compressedData = PasswordProtection.Encrypt(compressedData, password);
                         }
 
-                        currentFileIndex++;
-                        progressCallback?.Invoke((int)((currentFileIndex * 100.0) / totalFiles));
+                        writer.Write(compressedData.Length); // حجم البيانات المضغوطة
+                        writer.Write(compressedData); // البيانات المضغوطة (مشفرة إذا كانت محمية)
+
+                        // Update progress for writing phase (80% + 20% for writing)
+                        int writeProgress = 80 + (int)((i + 1) * 20.0 / totalFiles);
+                        progressReporter.ReportProgress(writeProgress);
                     }
                 }
+                
+                progressReporter.ReportProgress(100);
             }, cancellationToken);
         }
 
@@ -264,10 +429,27 @@ namespace FileCompressorApp
         {
             await Task.Run(() =>
             {
+                var progressReporter = new ThreadSafeProgressReporter(progressCallback);
+                
+                // Phase 1: Read and analyze file (10% of progress)
                 byte[] data = File.ReadAllBytes(inputPath);
+                progressReporter.ReportProgress(10);
+                
                 var frequencies = CalculateFrequencies(data);
                 var codes = BuildShannonCodes(frequencies);
+                progressReporter.ReportProgress(20);
 
+                // Phase 2: Compress data using parallel processing (60% of progress)
+                var compressionProgressReporter = new ThreadSafeProgressReporter(progress => 
+                {
+                    int adjustedProgress = 20 + (int)(progress * 0.6); // Map 0-100 to 20-80
+                    progressReporter.ReportProgress(adjustedProgress);
+                });
+                
+                byte[] compressedData = CompressDataParallel(data, codes, compressionProgressReporter, cancellationToken);
+                progressReporter.ReportProgress(80);
+
+                // Phase 3: Write to file (20% of progress)
                 using (var fs = new FileStream(outputPath, FileMode.Create))
                 using (var writer = new BinaryWriter(fs))
                 {
@@ -283,62 +465,26 @@ namespace FileCompressorApp
                         writer.Write(pair.Value);
                     }
 
-                    // Compress the data to a memory stream
-                    using (var compressedDataStream = new MemoryStream())
-                    using (var tempWriter = new BinaryWriter(compressedDataStream))
+                    progressReporter.ReportProgress(90);
+
+                    // Encrypt compressed data if password provided
+                    if (!string.IsNullOrEmpty(password))
                     {
-                        byte buffer = 0;
-                        int bufferLength = 0;
-                        int totalBytes = data.Length;
-
-                        for (int i = 0; i < totalBytes; i++)
-                        {
-                            CheckPauseState(cancellationToken);
-
-                            string code = codes[data[i]];
-                            foreach (char bit in code)
-                            {
-                                buffer = (byte)((buffer << 1) | (bit == '1' ? 1 : 0));
-                                bufferLength++;
-
-                                if (bufferLength == 8)
-                                {
-                                    tempWriter.Write(buffer);
-                                    buffer = 0;
-                                    bufferLength = 0;
-                                }
-                            }
-
-                            if (i % 1000 == 0 || i == totalBytes - 1)
-                            {
-                                int progress = (int)((i * 100.0) / totalBytes);
-                                progressCallback?.Invoke(progress);
-                            }
-                        }
-
-                        if (bufferLength > 0)
-                        {
-                            buffer <<= (8 - bufferLength);
-                            tempWriter.Write(buffer);
-                        }
-
-                        // Encrypt compressed data if password provided
-                        byte[] compressedData = compressedDataStream.ToArray();
-                        if (!string.IsNullOrEmpty(password))
-                        {
-                            compressedData = PasswordProtection.Encrypt(compressedData, password);
-                        }
-
-                        writer.Write(compressedData.Length); // حجم البيانات المضغوطة
-                        writer.Write(compressedData); // البيانات المضغوطة (مشفرة إذا كانت محمية)
+                        compressedData = PasswordProtection.Encrypt(compressedData, password);
                     }
+
+                    writer.Write(compressedData.Length); // حجم البيانات المضغوطة
+                    writer.Write(compressedData); // البيانات المضغوطة (مشفرة إذا كانت محمية)
                 }
+
+                progressReporter.ReportProgress(95);
 
                 // حساب نسبة الضغط
                 long originalSize = new FileInfo(inputPath).Length;
                 long compressedSize = new FileInfo(outputPath).Length;
                 compressionRatio = (originalSize - compressedSize) / (double)originalSize * 100;
 
+                progressReporter.ReportProgress(100);
             }, cancellationToken);
         }
 

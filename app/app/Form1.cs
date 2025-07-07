@@ -334,6 +334,23 @@ namespace FileCompressorApp
             {
                 await HandleContextMenuOperation();
             }
+
+            // Initialize multi-threading status
+            UpdateMultiThreadingStatus();
+        }
+
+        private void UpdateMultiThreadingStatus()
+        {
+            this.Text = $"File Compressor - Multi-Threading: {CompressionConfig.MaxThreads} threads";
+        }
+
+        private void btnConfigureThreads_Click(object sender, EventArgs e)
+        {
+            var form = new ThreadConfigForm();
+            if (form.ShowDialog() == DialogResult.OK)
+            {
+                UpdateMultiThreadingStatus();
+            }
         }
 
         private async Task HandleContextMenuOperation()
@@ -650,6 +667,173 @@ namespace FileCompressorApp
             this.RightToLeft = RightToLeft.Yes;
             this.RightToLeftLayout = true;
             this.StartPosition = FormStartPosition.CenterParent;
+            this.ResumeLayout(false);
+            this.PerformLayout();
+        }
+    }
+
+    // نموذج تكوين المعالجة المتوازية
+    public class ThreadConfigForm : Form
+    {
+        private Label lblMaxThreads;
+        private NumericUpDown numMaxThreads;
+        private Label lblChunkSize;
+        private NumericUpDown numChunkSize;
+        private Label lblMinFileSize;
+        private NumericUpDown numMinFileSize;
+        private Button btnOk;
+        private Button btnCancel;
+        private Button btnReset;
+        private Label lblCurrentCpus;
+
+        public ThreadConfigForm()
+        {
+            InitializeComponent();
+            LoadCurrentSettings();
+        }
+
+        private void LoadCurrentSettings()
+        {
+            numMaxThreads.Value = CompressionConfig.MaxThreads;
+            numChunkSize.Value = CompressionConfig.ChunkSizeBytes / (1024 * 1024); // Convert to MB
+            numMinFileSize.Value = CompressionConfig.MinFileSizeForChunking / (1024 * 1024); // Convert to MB
+        }
+
+        private void btnOk_Click(object sender, EventArgs e)
+        {
+            CompressionConfig.MaxThreads = (int)numMaxThreads.Value;
+            CompressionConfig.ChunkSizeBytes = (int)numChunkSize.Value * 1024 * 1024; // Convert from MB
+            CompressionConfig.MinFileSizeForChunking = (int)numMinFileSize.Value * 1024 * 1024; // Convert from MB
+            this.DialogResult = DialogResult.OK;
+            this.Close();
+        }
+
+        private void btnReset_Click(object sender, EventArgs e)
+        {
+            numMaxThreads.Value = Environment.ProcessorCount;
+            numChunkSize.Value = 1; // 1MB
+            numMinFileSize.Value = 5; // 5MB
+        }
+
+        private void InitializeComponent()
+        {
+            this.lblMaxThreads = new Label();
+            this.numMaxThreads = new NumericUpDown();
+            this.lblChunkSize = new Label();
+            this.numChunkSize = new NumericUpDown();
+            this.lblMinFileSize = new Label();
+            this.numMinFileSize = new NumericUpDown();
+            this.btnOk = new Button();
+            this.btnCancel = new Button();
+            this.btnReset = new Button();
+            this.lblCurrentCpus = new Label();
+            ((System.ComponentModel.ISupportInitialize)(this.numMaxThreads)).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)(this.numChunkSize)).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)(this.numMinFileSize)).BeginInit();
+            this.SuspendLayout();
+
+            // lblCurrentCpus
+            this.lblCurrentCpus.AutoSize = true;
+            this.lblCurrentCpus.Location = new System.Drawing.Point(12, 15);
+            this.lblCurrentCpus.Name = "lblCurrentCpus";
+            this.lblCurrentCpus.Size = new System.Drawing.Size(200, 17);
+            this.lblCurrentCpus.Text = $"Available CPU Cores: {Environment.ProcessorCount}";
+
+            // lblMaxThreads
+            this.lblMaxThreads.AutoSize = true;
+            this.lblMaxThreads.Location = new System.Drawing.Point(12, 45);
+            this.lblMaxThreads.Name = "lblMaxThreads";
+            this.lblMaxThreads.Size = new System.Drawing.Size(150, 17);
+            this.lblMaxThreads.Text = "Maximum Threads:";
+
+            // numMaxThreads
+            this.numMaxThreads.Location = new System.Drawing.Point(180, 43);
+            this.numMaxThreads.Minimum = 1;
+            this.numMaxThreads.Maximum = Environment.ProcessorCount * 2;
+            this.numMaxThreads.Name = "numMaxThreads";
+            this.numMaxThreads.Size = new System.Drawing.Size(80, 22);
+            this.numMaxThreads.TabIndex = 1;
+
+            // lblChunkSize
+            this.lblChunkSize.AutoSize = true;
+            this.lblChunkSize.Location = new System.Drawing.Point(12, 75);
+            this.lblChunkSize.Name = "lblChunkSize";
+            this.lblChunkSize.Size = new System.Drawing.Size(150, 17);
+            this.lblChunkSize.Text = "Chunk Size (MB):";
+
+            // numChunkSize
+            this.numChunkSize.Location = new System.Drawing.Point(180, 73);
+            this.numChunkSize.Minimum = 1;
+            this.numChunkSize.Maximum = 100;
+            this.numChunkSize.Name = "numChunkSize";
+            this.numChunkSize.Size = new System.Drawing.Size(80, 22);
+            this.numChunkSize.TabIndex = 2;
+
+            // lblMinFileSize
+            this.lblMinFileSize.AutoSize = true;
+            this.lblMinFileSize.Location = new System.Drawing.Point(12, 105);
+            this.lblMinFileSize.Name = "lblMinFileSize";
+            this.lblMinFileSize.Size = new System.Drawing.Size(160, 17);
+            this.lblMinFileSize.Text = "Min File Size for Parallel (MB):";
+
+            // numMinFileSize
+            this.numMinFileSize.Location = new System.Drawing.Point(180, 103);
+            this.numMinFileSize.Minimum = 1;
+            this.numMinFileSize.Maximum = 1000;
+            this.numMinFileSize.Name = "numMinFileSize";
+            this.numMinFileSize.Size = new System.Drawing.Size(80, 22);
+            this.numMinFileSize.TabIndex = 3;
+
+            // btnReset
+            this.btnReset.Location = new System.Drawing.Point(12, 140);
+            this.btnReset.Name = "btnReset";
+            this.btnReset.Size = new System.Drawing.Size(75, 30);
+            this.btnReset.TabIndex = 4;
+            this.btnReset.Text = "Reset";
+            this.btnReset.UseVisualStyleBackColor = true;
+            this.btnReset.Click += new System.EventHandler(this.btnReset_Click);
+
+            // btnOk
+            this.btnOk.Location = new System.Drawing.Point(110, 140);
+            this.btnOk.Name = "btnOk";
+            this.btnOk.Size = new System.Drawing.Size(75, 30);
+            this.btnOk.TabIndex = 5;
+            this.btnOk.Text = "OK";
+            this.btnOk.UseVisualStyleBackColor = true;
+            this.btnOk.Click += new System.EventHandler(this.btnOk_Click);
+
+            // btnCancel
+            this.btnCancel.DialogResult = DialogResult.Cancel;
+            this.btnCancel.Location = new System.Drawing.Point(200, 140);
+            this.btnCancel.Name = "btnCancel";
+            this.btnCancel.Size = new System.Drawing.Size(75, 30);
+            this.btnCancel.TabIndex = 6;
+            this.btnCancel.Text = "Cancel";
+            this.btnCancel.UseVisualStyleBackColor = true;
+
+            // ThreadConfigForm
+            this.AcceptButton = this.btnOk;
+            this.CancelButton = this.btnCancel;
+            this.ClientSize = new System.Drawing.Size(290, 190);
+            this.Controls.Add(this.lblCurrentCpus);
+            this.Controls.Add(this.lblMaxThreads);
+            this.Controls.Add(this.numMaxThreads);
+            this.Controls.Add(this.lblChunkSize);
+            this.Controls.Add(this.numChunkSize);
+            this.Controls.Add(this.lblMinFileSize);
+            this.Controls.Add(this.numMinFileSize);
+            this.Controls.Add(this.btnReset);
+            this.Controls.Add(this.btnOk);
+            this.Controls.Add(this.btnCancel);
+            this.FormBorderStyle = FormBorderStyle.FixedDialog;
+            this.MaximizeBox = false;
+            this.MinimizeBox = false;
+            this.Name = "ThreadConfigForm";
+            this.StartPosition = FormStartPosition.CenterParent;
+            this.Text = "Multi-Threading Configuration";
+            ((System.ComponentModel.ISupportInitialize)(this.numMaxThreads)).EndInit();
+            ((System.ComponentModel.ISupportInitialize)(this.numChunkSize)).EndInit();
+            ((System.ComponentModel.ISupportInitialize)(this.numMinFileSize)).EndInit();
             this.ResumeLayout(false);
             this.PerformLayout();
         }

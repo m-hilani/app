@@ -3,3 +3,8 @@ C:\Users\mahmo\OneDrive\Documents\College\4\2\MM\app\app\app\obj\Release\FileCom
 C:\Users\mahmo\OneDrive\Documents\College\4\2\MM\app\app\app\obj\Release\app.Properties.Resources.resources
 C:\Users\mahmo\OneDrive\Documents\College\4\2\MM\app\app\app\obj\Release\app.csproj.GenerateResource.cache
 C:\Users\mahmo\OneDrive\Documents\College\4\2\MM\app\app\app\obj\Release\app.csproj.CoreCompileInputs.cache
+C:\Users\mahmo\OneDrive\Documents\College\4\2\MM\app\app\app\bin\Release\app.exe.config
+C:\Users\mahmo\OneDrive\Documents\College\4\2\MM\app\app\app\bin\Release\app.exe
+C:\Users\mahmo\OneDrive\Documents\College\4\2\MM\app\app\app\bin\Release\app.pdb
+C:\Users\mahmo\OneDrive\Documents\College\4\2\MM\app\app\app\obj\Release\app.exe
+C:\Users\mahmo\OneDrive\Documents\College\4\2\MM\app\app\app\obj\Release\app.pdb
