@@ -37,6 +37,9 @@ namespace FileCompressorApp
                     writer.Write(!string.IsNullOrEmpty(password)); // هل الملف محمي بكلمة سر؟
                     writer.Write(filePaths.Count); // عدد الملفات
 
+                    int totalFiles = filePaths.Count;
+                    int currentFileIndex = 0;
+
                     foreach (var file in filePaths)
                     {
                         byte[] data = File.ReadAllBytes(file.Key);
@@ -59,11 +62,12 @@ namespace FileCompressorApp
                         {
                             byte buffer = 0;
                             int bufferLength = 0;
+                            int totalBytes = data.Length;
 
-                            foreach (byte b in data)
+                            for (int i = 0; i < totalBytes; i++)
                             {
                                 CheckPauseState(cancellationToken);
-                                string code = codes[b];
+                                string code = codes[data[i]];
                                 foreach (char bit in code)
                                 {
                                     buffer = (byte)((buffer << 1) | (bit == '1' ? 1 : 0));
@@ -75,6 +79,14 @@ namespace FileCompressorApp
                                         buffer = 0;
                                         bufferLength = 0;
                                     }
+                                }
+
+                                // Update progress for current file within the overall progress
+                                if (i % 1000 == 0 || i == totalBytes - 1)
+                                {
+                                    int fileProgress = (int)((i * 100.0) / totalBytes);
+                                    int overallProgress = (int)((currentFileIndex * 100.0 + fileProgress) / totalFiles);
+                                    progressCallback?.Invoke(overallProgress);
                                 }
                             }
 
@@ -94,6 +106,9 @@ namespace FileCompressorApp
                             writer.Write(compressedData.Length); // حجم البيانات المضغوطة
                             writer.Write(compressedData); // البيانات المضغوطة (مشفرة إذا كانت محمية)
                         }
+
+                        currentFileIndex++;
+                        progressCallback?.Invoke((int)((currentFileIndex * 100.0) / totalFiles));
                     }
                 }
             }, cancellationToken);
@@ -130,6 +145,9 @@ namespace FileCompressorApp
                         int compressedDataSize = reader.ReadInt32();
                         byte[] compressedData = reader.ReadBytes(compressedDataSize);
 
+                        // Update progress for file search
+                        progressCallback?.Invoke((int)((i * 50.0) / fileCount));
+
                         // Decrypt if password protected
                         if (isPasswordProtected)
                         {
@@ -160,6 +178,13 @@ namespace FileCompressorApp
                                         decompressedData[dataIndex++] = reverseCodes[currentCode];
                                         currentCode = "";
 
+                                        // Update progress for decompression
+                                        if (dataIndex % 1000 == 0 || dataIndex == originalSize)
+                                        {
+                                            int decompressProgress = (int)((dataIndex * 50.0) / originalSize);
+                                            progressCallback?.Invoke(50 + decompressProgress);
+                                        }
+
                                         if (dataIndex >= originalSize)
                                             break;
                                     }
@@ -168,6 +193,7 @@ namespace FileCompressorApp
 
                             File.WriteAllBytes(outputPath, decompressedData);
                             foundFileName = fileName;
+                            progressCallback?.Invoke(100);
                             break;
                         }
                     }
@@ -283,7 +309,7 @@ namespace FileCompressorApp
                                 }
                             }
 
-                            if (i % 100 == 0)
+                            if (i % 1000 == 0 || i == totalBytes - 1)
                             {
                                 int progress = (int)((i * 100.0) / totalBytes);
                                 progressCallback?.Invoke(progress);
@@ -382,6 +408,13 @@ namespace FileCompressorApp
                                         decompressedData[dataIndex++] = reverseCodes[currentCode];
                                         currentCode = "";
 
+                                        // Update progress for decompression
+                                        if (dataIndex % 1000 == 0 || dataIndex == originalSize)
+                                        {
+                                            int progress = (int)((dataIndex * 100.0) / originalSize);
+                                            progressCallback?.Invoke(progress);
+                                        }
+
                                         if (dataIndex >= originalSize)
                                             break;
                                     }
@@ -446,8 +479,8 @@ namespace FileCompressorApp
                                 }
                             }
 
-                            if (bitsProcessed % 1000 == 0)
-                                progressCallback?.Invoke((int)((bitsProcessed * 100.0) / totalBits));
+                            if (bitsProcessed % 1000 == 0 || dataIndex == originalSize)
+                                progressCallback?.Invoke((int)((dataIndex * 100.0) / originalSize));
                         }
 
                         File.WriteAllBytes(outputPath, decompressedData);

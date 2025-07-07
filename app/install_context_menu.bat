@@ -10,7 +10,6 @@ echo.
 set "CURRENT_DIR=%~dp0"
 set "APP_PATH=%CURRENT_DIR%app\bin\Debug\app.exe"
 
-:: تحقق من وجود الملف التنفيذي
 if not exist "%APP_PATH%" (
     echo خطأ: لم يتم العثور على الملف التنفيذي في المسار التالي:
     echo %APP_PATH%
@@ -39,7 +38,6 @@ echo [HKEY_CLASSES_ROOT\*\shell\CompressFile\command] >> "%REG_FILE%"
 echo @="\"%APP_PATH:\=\\%\" /compress \"%%1\"" >> "%REG_FILE%"
 echo. >> "%REG_FILE%"
 
-:: إضافة خيارات فك الضغط للملفات .huff
 echo ; إضافة خيارات فك الضغط للملفات المضغوطة .huff >> "%REG_FILE%"
 echo [HKEY_CLASSES_ROOT\.huff] >> "%REG_FILE%"
 echo @="HuffmanCompressedFile" >> "%REG_FILE%"
@@ -59,7 +57,6 @@ echo [HKEY_CLASSES_ROOT\HuffmanCompressedFile\shell\DecompressFile\command] >> "
 echo @="\"%APP_PATH:\=\\%\" /decompress \"%%1\"" >> "%REG_FILE%"
 echo. >> "%REG_FILE%"
 
-:: إضافة خيارات فك الضغط للملفات .fs
 echo ; إضافة خيارات فك الضغط للملفات المضغوطة .fs >> "%REG_FILE%"
 echo [HKEY_CLASSES_ROOT\.fs] >> "%REG_FILE%"
 echo @="FanoShannonCompressedFile" >> "%REG_FILE%"
