@@ -32,7 +32,7 @@ namespace FileCompressorApp
                 {
                     var files = ofd.FileNames.ToDictionary(f => f, f => Path.GetFileName(f));
                     await StartOperationAsync(() =>
-                        currentAlgorithm.CompressMultipleAsync(files, sfd.FileName, txtPassword.Text, UpdateProgress));
+                        currentAlgorithm.CompressMultipleAsync(files, sfd.FileName, txtPassword.Text, UpdateProgress, cts.Token));
                 }
             }
         }
@@ -73,7 +73,7 @@ namespace FileCompressorApp
                             {
                                 await StartOperationAsync(() =>
                                     currentAlgorithm.ExtractSingleFileAsync(ofd.FileName, inputForm.FileNameToExtract,
-                                                                          sfd.FileName, txtPassword.Text, UpdateProgress));
+                                                                          sfd.FileName, txtPassword.Text, UpdateProgress, cts.Token));
                                 MessageBox.Show($"تم استخراج الملف بنجاح!", "نجاح",
                                                 MessageBoxButtons.OK, MessageBoxIcon.Information);
                             }
@@ -101,7 +101,7 @@ namespace FileCompressorApp
                 if (sfd.ShowDialog() == DialogResult.OK)
                 {
                     await StartOperationAsync(() =>
-                        currentAlgorithm.CompressAsync(ofd.FileName, sfd.FileName, txtPassword.Text, UpdateProgress));
+                        currentAlgorithm.CompressAsync(ofd.FileName, sfd.FileName, txtPassword.Text, UpdateProgress, cts.Token));
                 }
             }
         }
@@ -116,7 +116,7 @@ namespace FileCompressorApp
                 if (sfd.ShowDialog() == DialogResult.OK)
                 {
                     await StartOperationAsync(() =>
-                        currentAlgorithm.DecompressAsync(ofd.FileName, sfd.FileName, txtPassword.Text, UpdateProgress));
+                        currentAlgorithm.DecompressAsync(ofd.FileName, sfd.FileName, txtPassword.Text, UpdateProgress, cts.Token));
                 }
             }
         }
@@ -125,8 +125,11 @@ namespace FileCompressorApp
         {
             try
             {
-              
+                // Disable all operation buttons and enable control buttons
+                DisableOperationButtons();
                 btnPauseResume.Enabled = true;
+                btnCancel.Enabled = true;
+                
                 cts = new CancellationTokenSource();
 
                 await operation();
@@ -136,6 +139,10 @@ namespace FileCompressorApp
             catch (OperationCanceledException)
             {
                 MessageBox.Show("تم إلغاء العملية", "معلومة", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                MessageBox.Show(ex.Message, "خطأ في كلمة السر", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             catch (Exception ex)
             {
@@ -147,6 +154,26 @@ namespace FileCompressorApp
             }
         }
 
+        private void DisableOperationButtons()
+        {
+            btnCompress.Enabled = false;
+            btnDecompress.Enabled = false;
+            btnMultiCompress.Enabled = false;
+            btnExtractSingle.Enabled = false;
+            btnCompressFolder.Enabled = false;
+            btnCompare.Enabled = false;
+        }
+
+        private void EnableOperationButtons()
+        {
+            btnCompress.Enabled = true;
+            btnDecompress.Enabled = true;
+            btnMultiCompress.Enabled = true;
+            btnExtractSingle.Enabled = true;
+            btnCompressFolder.Enabled = true;
+            btnCompare.Enabled = true;
+        }
+
         private void UpdateProgress(int progress)
         {
             this.Invoke((MethodInvoker)(() =>
@@ -156,10 +183,30 @@ namespace FileCompressorApp
             }));
         }
 
-        //private void btnCancel_Click(object sender, EventArgs e)
-        //{
-        //    cts?.Cancel();
-        //}
+        private void btnCancel_Click(object sender, EventArgs e)
+        {
+            if (cts != null && !cts.IsCancellationRequested)
+            {
+                // If the operation is paused, resume it first so it can properly respond to cancellation
+                if (isPaused)
+                {
+                    if (currentAlgorithm is HuffmanCompressor huffman)
+                    {
+                        huffman.Resume();
+                    }
+                    else if (currentAlgorithm is FanoShannonCompressor fano)
+                    {
+                        fano.Resume();
+                    }
+                    isPaused = false;
+                }
+                
+                cts.Cancel();
+                lblStatus.Text = "جارٍ إلغاء العملية...";
+                btnCancel.Enabled = false;
+                btnPauseResume.Enabled = false;
+            }
+        }
 
         private void btnPauseResume_Click(object sender, EventArgs e)
         {
@@ -169,11 +216,29 @@ namespace FileCompressorApp
                 {
                     huffman.Resume();
                     btnPauseResume.Text = "إيقاف مؤقت";
+                    lblStatus.Text = "جارٍ المعالجة...";
                 }
                 else
                 {
                     huffman.Pause();
                     btnPauseResume.Text = "استئناف";
+                    lblStatus.Text = "متوقف مؤقتاً...";
+                }
+                isPaused = !isPaused;
+            }
+            else if (currentAlgorithm is FanoShannonCompressor fano)
+            {
+                if (isPaused)
+                {
+                    fano.Resume();
+                    btnPauseResume.Text = "إيقاف مؤقت";
+                    lblStatus.Text = "جارٍ المعالجة...";
+                }
+                else
+                {
+                    fano.Pause();
+                    btnPauseResume.Text = "استئناف";
+                    lblStatus.Text = "متوقف مؤقتاً...";
                 }
                 isPaused = !isPaused;
             }
@@ -183,8 +248,26 @@ namespace FileCompressorApp
         {
             progressBar1.Value = 0;
             lblStatus.Text = "جاهز";
-          
+            
+            // Reset pause state in algorithms
+            if (isPaused)
+            {
+                if (currentAlgorithm is HuffmanCompressor huffman)
+                {
+                    huffman.Resume();
+                }
+                else if (currentAlgorithm is FanoShannonCompressor fano)
+                {
+                    fano.Resume();
+                }
+            }
+            
+            // Re-enable operation buttons
+            EnableOperationButtons();
+            
+            // Disable control buttons and reset their state
             btnPauseResume.Enabled = false;
+            btnCancel.Enabled = false;
             btnPauseResume.Text = "إيقاف مؤقت";
             isPaused = false;
         }
@@ -287,7 +370,7 @@ namespace FileCompressorApp
                         }
 
                         await StartOperationAsync(() =>
-                            currentAlgorithm.CompressMultipleAsync(files, sfd.FileName, txtPassword.Text, UpdateProgress));
+                            currentAlgorithm.CompressMultipleAsync(files, sfd.FileName, txtPassword.Text, UpdateProgress, cts.Token));
                     }
                 }
                 catch (Exception ex)
@@ -328,13 +411,20 @@ namespace FileCompressorApp
         public ExtractSingleFileForm()
         {
             InitializeComponent();
+            this.Text = "اختر الملف المراد استخراجه";
+            this.FormBorderStyle = FormBorderStyle.FixedDialog;
+            this.MaximizeBox = false;
+            this.MinimizeBox = false;
         }
 
         public void SetAvailableFiles(List<string> fileNames)
         {
             cmbFileName.Items.Clear();
-            cmbFileName.Items.AddRange(fileNames.ToArray());
-            if (fileNames.Count > 0)
+            foreach (var fileName in fileNames)
+            {
+                cmbFileName.Items.Add(fileName);
+            }
+            if (cmbFileName.Items.Count > 0)
                 cmbFileName.SelectedIndex = 0;
         }
 
@@ -342,26 +432,57 @@ namespace FileCompressorApp
         {
             this.lblInstruction = new Label();
             this.cmbFileName = new ComboBox();
-            this.btnOk = new Button { Text = "موافق", DialogResult = DialogResult.OK };
-            this.btnCancel = new Button { Text = "إلغاء", DialogResult = DialogResult.Cancel };
+            this.btnOk = new Button();
+            this.btnCancel = new Button();
+            this.SuspendLayout();
 
-            this.lblInstruction.Text = "اختر الملف المراد استخراجه:";
-            this.lblInstruction.Location = new System.Drawing.Point(20, 10);
-            this.lblInstruction.Size = new System.Drawing.Size(200, 20);
+            // lblInstruction
+            this.lblInstruction.AutoSize = true;
+            this.lblInstruction.Location = new System.Drawing.Point(12, 15);
+            this.lblInstruction.Name = "lblInstruction";
+            this.lblInstruction.Size = new System.Drawing.Size(200, 17);
+            this.lblInstruction.Text = "اختر الملف الذي تريد استخراجه:";
 
-            this.cmbFileName.Location = new System.Drawing.Point(20, 35);
-            this.cmbFileName.Size = new System.Drawing.Size(200, 20);
+            // cmbFileName
             this.cmbFileName.DropDownStyle = ComboBoxStyle.DropDownList;
+            this.cmbFileName.FormattingEnabled = true;
+            this.cmbFileName.Location = new System.Drawing.Point(12, 40);
+            this.cmbFileName.Name = "cmbFileName";
+            this.cmbFileName.Size = new System.Drawing.Size(350, 24);
+            this.cmbFileName.TabIndex = 1;
 
-            this.btnOk.Location = new System.Drawing.Point(20, 70);
-            this.btnCancel.Location = new System.Drawing.Point(120, 70);
+            // btnOk
+            this.btnOk.DialogResult = DialogResult.OK;
+            this.btnOk.Location = new System.Drawing.Point(200, 80);
+            this.btnOk.Name = "btnOk";
+            this.btnOk.Size = new System.Drawing.Size(75, 30);
+            this.btnOk.TabIndex = 2;
+            this.btnOk.Text = "موافق";
+            this.btnOk.UseVisualStyleBackColor = true;
 
-            this.ClientSize = new System.Drawing.Size(240, 110);
-            this.Controls.AddRange(new Control[] { lblInstruction, cmbFileName, btnOk, btnCancel });
+            // btnCancel
+            this.btnCancel.DialogResult = DialogResult.Cancel;
+            this.btnCancel.Location = new System.Drawing.Point(290, 80);
+            this.btnCancel.Name = "btnCancel";
+            this.btnCancel.Size = new System.Drawing.Size(75, 30);
+            this.btnCancel.TabIndex = 3;
+            this.btnCancel.Text = "إلغاء";
+            this.btnCancel.UseVisualStyleBackColor = true;
 
-            this.AcceptButton = btnOk;
-            this.CancelButton = btnCancel;
-            this.Text = "استخراج ملف من الأرشيف";
+            // ExtractSingleFileForm
+            this.AcceptButton = this.btnOk;
+            this.CancelButton = this.btnCancel;
+            this.ClientSize = new System.Drawing.Size(380, 130);
+            this.Controls.Add(this.btnCancel);
+            this.Controls.Add(this.btnOk);
+            this.Controls.Add(this.cmbFileName);
+            this.Controls.Add(this.lblInstruction);
+            this.Name = "ExtractSingleFileForm";
+            this.RightToLeft = RightToLeft.Yes;
+            this.RightToLeftLayout = true;
+            this.StartPosition = FormStartPosition.CenterParent;
+            this.ResumeLayout(false);
+            this.PerformLayout();
         }
     }
 }

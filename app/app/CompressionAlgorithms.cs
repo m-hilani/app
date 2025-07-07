@@ -533,9 +533,15 @@ namespace FileCompressorApp
             {
                 lock (pauseLock)
                 {
-                    Monitor.Wait(pauseLock);
+                    // Check for cancellation before waiting
+                    cancellationToken.ThrowIfCancellationRequested();
+                    
+                    // Use timeout to periodically check for cancellation
+                    Monitor.Wait(pauseLock, 500); // Wait for 500ms max, then check again
+                    
+                    // Check for cancellation after waiting
+                    cancellationToken.ThrowIfCancellationRequested();
                 }
-                cancellationToken.ThrowIfCancellationRequested();
             }
         }
 

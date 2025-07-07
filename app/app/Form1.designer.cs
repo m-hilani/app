@@ -22,6 +22,7 @@ namespace FileCompressorApp
             this.progressBar1 = new System.Windows.Forms.ProgressBar();
             this.lblStatus = new System.Windows.Forms.Label();
             this.btnPauseResume = new System.Windows.Forms.Button();
+            this.btnCancel = new System.Windows.Forms.Button();
             this.radioHuffman = new System.Windows.Forms.RadioButton();
             this.radioFanoShannon = new System.Windows.Forms.RadioButton();
             this.groupBox1 = new System.Windows.Forms.GroupBox();
@@ -58,7 +59,7 @@ namespace FileCompressorApp
             // 
             this.progressBar1.Location = new System.Drawing.Point(30, 270);
             this.progressBar1.Name = "progressBar1";
-            this.progressBar1.Size = new System.Drawing.Size(350, 30);
+            this.progressBar1.Size = new System.Drawing.Size(430, 30);
             this.progressBar1.TabIndex = 2;
             // 
             // lblStatus
@@ -75,11 +76,22 @@ namespace FileCompressorApp
             this.btnPauseResume.Enabled = false;
             this.btnPauseResume.Location = new System.Drawing.Point(230, 80);
             this.btnPauseResume.Name = "btnPauseResume";
-            this.btnPauseResume.Size = new System.Drawing.Size(150, 40);
+            this.btnPauseResume.Size = new System.Drawing.Size(110, 40);
             this.btnPauseResume.TabIndex = 5;
             this.btnPauseResume.Text = "إيقاف مؤقت";
             this.btnPauseResume.UseVisualStyleBackColor = true;
             this.btnPauseResume.Click += new System.EventHandler(this.btnPauseResume_Click);
+            // 
+            // btnCancel
+            // 
+            this.btnCancel.Enabled = false;
+            this.btnCancel.Location = new System.Drawing.Point(350, 80);
+            this.btnCancel.Name = "btnCancel";
+            this.btnCancel.Size = new System.Drawing.Size(110, 40);
+            this.btnCancel.TabIndex = 15;
+            this.btnCancel.Text = "إلغاء العملية";
+            this.btnCancel.UseVisualStyleBackColor = true;
+            this.btnCancel.Click += new System.EventHandler(this.btnCancel_Click);
             // 
             // radioHuffman
             // 
@@ -111,14 +123,14 @@ namespace FileCompressorApp
             this.groupBox1.Controls.Add(this.radioFanoShannon);
             this.groupBox1.Location = new System.Drawing.Point(30, 320);
             this.groupBox1.Name = "groupBox1";
-            this.groupBox1.Size = new System.Drawing.Size(350, 80);
+            this.groupBox1.Size = new System.Drawing.Size(430, 80);
             this.groupBox1.TabIndex = 8;
             this.groupBox1.TabStop = false;
             this.groupBox1.Text = "خوارزمية الضغط";
             // 
             // btnCompare
             // 
-            this.btnCompare.Location = new System.Drawing.Point(230, 180);
+            this.btnCompare.Location = new System.Drawing.Point(310, 180);
             this.btnCompare.Name = "btnCompare";
             this.btnCompare.Size = new System.Drawing.Size(150, 40);
             this.btnCompare.TabIndex = 9;
@@ -155,7 +167,7 @@ namespace FileCompressorApp
             // 
             // btnExtractSingle
             // 
-            this.btnExtractSingle.Location = new System.Drawing.Point(230, 130);
+            this.btnExtractSingle.Location = new System.Drawing.Point(190, 130);
             this.btnExtractSingle.Name = "btnExtractSingle";
             this.btnExtractSingle.Size = new System.Drawing.Size(150, 40);
             this.btnExtractSingle.TabIndex = 13;
@@ -165,9 +177,9 @@ namespace FileCompressorApp
             // 
             // btnCompressFolder
             // 
-            this.btnCompressFolder.Location = new System.Drawing.Point(230, 30);
+            this.btnCompressFolder.Location = new System.Drawing.Point(350, 130);
             this.btnCompressFolder.Name = "btnCompressFolder";
-            this.btnCompressFolder.Size = new System.Drawing.Size(150, 40);
+            this.btnCompressFolder.Size = new System.Drawing.Size(110, 40);
             this.btnCompressFolder.TabIndex = 14;
             this.btnCompressFolder.Text = "ضغط مجلد";
             this.btnCompressFolder.UseVisualStyleBackColor = true;
@@ -177,7 +189,8 @@ namespace FileCompressorApp
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(400, 420);
+            this.ClientSize = new System.Drawing.Size(480, 420);
+            this.Controls.Add(this.btnCancel);
             this.Controls.Add(this.btnExtractSingle);
             this.Controls.Add(this.btnMultiCompress);
             this.Controls.Add(this.btnCompressFolder);
@@ -208,6 +221,7 @@ namespace FileCompressorApp
         private System.Windows.Forms.ProgressBar progressBar1;
         private System.Windows.Forms.Label lblStatus;
         private System.Windows.Forms.Button btnPauseResume;
+        private System.Windows.Forms.Button btnCancel;
         private System.Windows.Forms.RadioButton radioHuffman;
         private System.Windows.Forms.RadioButton radioFanoShannon;
         private System.Windows.Forms.GroupBox groupBox1;

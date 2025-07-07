@@ -395,9 +395,15 @@ namespace FileCompressorApp
             {
                 lock (pauseLock)
                 {
-                    Monitor.Wait(pauseLock);
+                    // Check for cancellation before waiting
+                    cancellationToken.ThrowIfCancellationRequested();
+                    
+                    // Use timeout to periodically check for cancellation
+                    Monitor.Wait(pauseLock, 500); // Wait for 500ms max, then check again
+                    
+                    // Check for cancellation after waiting
+                    cancellationToken.ThrowIfCancellationRequested();
                 }
-                cancellationToken.ThrowIfCancellationRequested();
             }
         }
 
@@ -410,9 +416,20 @@ namespace FileCompressorApp
 
         private Dictionary<byte, string> BuildShannonCodes(Dictionary<byte, int> frequencies)
         {
-            var nodes = frequencies.Select(p => new ShannonNode { Symbol = p.Key, Frequency = p.Value })
+            var nodes = frequencies.Select(p => new ShannonNode { Symbol = p.Key, Frequency = p.Value, Code = "" })
                                   .OrderByDescending(n => n.Frequency)
                                   .ToList();
+
+            // Handle special cases
+            if (nodes.Count == 0)
+                return new Dictionary<byte, string>();
+            
+            if (nodes.Count == 1)
+            {
+                // Single symbol case - assign a single bit code
+                nodes[0].Code = "0";
+                return nodes.ToDictionary(n => n.Symbol, n => n.Code);
+            }
 
             BuildCodesRecursive(nodes, 0, nodes.Count - 1);
             return nodes.ToDictionary(n => n.Symbol, n => n.Code);
@@ -422,33 +439,49 @@ namespace FileCompressorApp
         {
             if (start >= end) return;
 
+            // Base case: two nodes
             if (end - start == 1)
             {
-                if (string.IsNullOrEmpty(nodes[start].Code)) nodes[start].Code = "0";
-                if (string.IsNullOrEmpty(nodes[end].Code)) nodes[end].Code = "1";
+                nodes[start].Code += "0";
+                nodes[end].Code += "1";
                 return;
             }
 
-            int totalFreq = nodes.Skip(start).Take(end - start + 1).Sum(n => n.Frequency);
+            // Find the optimal split point
+            int totalFreq = 0;
+            for (int i = start; i <= end; i++)
+                totalFreq += nodes[i].Frequency;
+
             int currentSum = 0;
             int split = start;
+            int bestSplit = start;
+            int bestDiff = int.MaxValue;
 
+            // Find the split that creates the most balanced division
             for (int i = start; i < end; i++)
             {
                 currentSum += nodes[i].Frequency;
-                if (currentSum >= totalFreq / 2)
+                int leftSum = currentSum;
+                int rightSum = totalFreq - currentSum;
+                int diff = Math.Abs(leftSum - rightSum);
+                
+                if (diff < bestDiff)
                 {
-                    split = i;
-                    break;
+                    bestDiff = diff;
+                    bestSplit = i;
                 }
             }
+            
+            split = bestSplit;
 
+            // Assign codes: left group gets "0", right group gets "1"
             for (int i = start; i <= split; i++)
-                nodes[i].Code = (nodes[i].Code ?? "") + "0";
+                nodes[i].Code += "0";
 
             for (int i = split + 1; i <= end; i++)
-                nodes[i].Code = (nodes[i].Code ?? "") + "1";
+                nodes[i].Code += "1";
 
+            // Recursively build codes for both groups
             BuildCodesRecursive(nodes, start, split);
             BuildCodesRecursive(nodes, split + 1, end);
         }
